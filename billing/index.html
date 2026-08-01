@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Billing &amp; E-Billing · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801a">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js"></script>
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() */
+var ebSearch = '';
+var ebPortal = 'all';
+var ebLimit = 40;
+var ebReason = 'all';
+
+function ebSet(k, v) {
+  if (k === 'search') ebSearch = (v || '').toLowerCase();
+  if (k === 'portal') ebPortal = v;
+  if (k === 'reason') ebReason = v;
+  ebLimit = 40; render();
+}
+function ebMore() { ebLimit += 80; render(); }
+
+function render() {
+  var M = window.MODEL, E = M.ebill;
+  if (!currentPersona()) return;
+  if (!can('fin')) {
+    document.getElementById('root').innerHTML = hero('Billing & e-billing', 'Restricted.',
+      'Your role does not include billing access.', ['ebill']);
+    return;
+  }
+
+  var list = M.ebillClients.filter(function (x) {
+    if (ebSearch && x.client.toLowerCase().indexOf(ebSearch) === -1) return false;
+    if (ebPortal !== 'all' && x.portal !== ebPortal) return false;
+    return true;
+  });
+  var shownRej = list.reduce(function (s, x) { return s + x.rejected; }, 0);
+
+  /* reason taxonomy, firm-wide */
+  var reasons = E.reasons.map(function (r) {
+    var amt = M.ebillClients.reduce(function (s, c) {
+      var m = c.mix.filter(function (x) { return x.code === r.code; })[0];
+      return s + (m ? m.amount : 0);
+    }, 0);
+    return { code: r.code, label: r.label, amount: amt, pct: amt / E.rejected,
+      preventable: ['BLOCK_BILLING', 'TASK_CODE', 'ADMIN', 'STAFFING', 'TRAVEL'].indexOf(r.code) !== -1 };
+  }).sort(function (a, b) { return b.amount - a.amount; });
+  var preventable = reasons.filter(function (r) { return r.preventable; }).reduce(function (s, r) { return s + r.amount; }, 0);
+
+  var kpis = [
+    kpi('Submitted through portals', fmtK(E.submitted),
+      fmtPct(E.share * 100) + ' of everything billed', '',
+      'Value invoiced through client e-billing portals|' + fmtN(E.matters) + ' matters across ' + fmtN(M.ebillClients.length) + ' clients|Serengeti · TyMetrix 360 · CounselLink · Passport · Onit'),
+    kpi('Rejected', fmtK(E.rejected), fmtPct(E.rejRate * 100) + ' of submitted value', 'amber',
+      'Invoice lines returned by client portals|' + fmt$(E.submitted) + ' × ' + fmtPct(E.rejRate * 100) + '|Industry band is 3–6% — this firm sits inside it'),
+    kpi('Appealed', fmtK(E.appealed), fmtPct(E.appealed / E.rejected * 100) + ' of rejections', 'amber',
+      'Rejections the firm actually challenged|The rest were written off without a fight|Most firms appeal the large lines and let the remainder go'),
+    kpi('Recovered', fmtK(E.recovered), fmtPct(E.recovered / E.appealed * 100) + ' of appeals succeed', 'green',
+      'Recovered on appeal|Appeals succeed roughly two times in three — which is the argument for appealing more of them'),
+    kpi('Never recovered', fmtK(E.unrecovered), 'written off in silence', 'amber',
+      'Rejected − recovered|This is the number nobody at a firm can usually produce|At ' + fmtPct(E.rejRate * 100) + ' rejection it recurs every single year'),
+    kpi('Preventable at source', fmtK(preventable), fmtPct(preventable / E.rejected * 100) + ' of all rejections', 'green',
+      'Block billing, missing task codes, non-approved timekeepers, admin time and travel|Every one of these is checkable against the client guidelines BEFORE submission|This is what the pre-bill compliance engine removes'),
+    kpi('Median days to pay', fmtN(median(M.ebillClients.map(function (x) { return x.daysToPay; })), 0) + ' days',
+      'portal clients', ''),
+    kpi('Guidelines parsed', fmtN(M.ebillClients.reduce(function (s, x) { return s + x.ocgCount; }, 0)),
+      'enforceable rules across ' + fmtN(M.ebillClients.length) + ' clients ' + tie('/law/ocg/', 'OCG'), ''),
+  ];
+
+  /* reason taxonomy panel */
+  var maxR = reasons[0].amount;
+  var reasonPanel = '<div class="wf">' + reasons.map(function (r) {
+    return '<div class="wf-row" style="grid-template-columns:250px 1fr 116px">' +
+      '<div class="wf-l">' + esc(r.label) + (r.preventable ? ' <span style="color:var(--color-green);font-weight:800;font-size:10px">PREVENTABLE</span>' : '') + '</div>' +
+      '<div class="wf-track"><div class="wf-bar ' + (r.preventable ? '' : 'leak') + '" style="width:' + (r.amount / maxR * 100).toFixed(1) + '%"></div></div>' +
+      '<div class="wf-v" data-exp="' + esc(r.label) + '|' + fmt$2(r.amount) + '|' + fmtPct(r.pct * 100) + ' of all rejections|' +
+        (r.preventable ? 'Checkable against client guidelines before the bill is submitted' : 'Requires a judgement call or a conversation with the client') +
+        '">' + fmtK(r.amount) + '</div></div>';
+  }).join('') + '</div>' +
+  '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted)">' +
+    '<b style="color:var(--color-green)">' + fmtK(preventable) + '</b> of the <b>' + fmtK(E.rejected) + '</b> rejected each year fails on something the portal could have caught before submission — ' +
+    'a block-billed narrative, a missing task code, a timekeeper the client never approved. ' +
+    'The firm is not losing arguments; it is losing formatting.' +
+  '</div>';
+
+  /* pre-submission compliance check — the demo beat */
+  var checkPanel =
+    '<div style="font-size:12.5px;color:var(--color-text-muted);margin-bottom:14px">Draft invoice — ' +
+      esc(M.ebillClients[0].client) + ' · ' + esc(M.ebillClients[0].portal) + ' · ' + M.ebillClients[0].ocgCount + ' guideline rules loaded</div>' +
+    '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+    '<thead><tr><th>Timekeeper</th><th>Date</th><th class="r">Hrs</th><th class="r">Rate</th><th>Narrative</th><th>Check</th></tr></thead><tbody>' +
+    [
+      ['Hollis Pemberton', 'Partner', '07-14-2026', 3.4, 1285, 'Review and revise draft agreement; correspondence with client; attend to related matters', 'fail', 'Block billing — client guideline 4.2 requires single-task entries'],
+      ['Imogen Kilbride', 'Associate (2024)', '07-14-2026', 6.1, 610, 'Draft memorandum re indemnity provisions', 'pass', ''],
+      ['Jasper Lindqvist', 'Paralegal', '07-15-2026', 2.0, 335, 'Organise and index document production', 'fail', 'Non-approved timekeeper — paralegal time excluded under guideline 7.1'],
+      ['Hollis Pemberton', 'Partner', '07-16-2026', 1.2, 1285, 'Travel to client meeting (billed at full rate)', 'fail', 'Travel billed above policy — guideline 9.4 caps travel at 50%'],
+      ['Katarina Nnamdi', 'Associate (2021)', '07-16-2026', 4.7, 705, 'Analyse regulatory filing requirements; prepare summary chart', 'pass', ''],
+      ['Imogen Kilbride', 'Associate (2024)', '07-17-2026', 0.8, 610, 'File organisation and matter administration', 'fail', 'Administrative time not billable — guideline 5.3'],
+    ].map(function (r) {
+      var ok = r[6] === 'pass';
+      return '<tr><td><b>' + r[0] + '</b><div style="font-size:10.5px;color:var(--color-slate-hint)">' + r[1] + '</div></td>' +
+        '<td>' + r[2] + '</td><td class="r">' + r[3].toFixed(1) + '</td><td class="r">' + fmt$(r[4]) + '</td>' +
+        '<td style="font-size:12px;max-width:340px">' + esc(r[5]) + '</td>' +
+        '<td>' + (ok ? pill('CLEAR', 'green') : pill('BLOCKED', 'red') +
+          '<div style="font-size:10.5px;color:var(--color-red);margin-top:4px;max-width:250px">' + esc(r[7]) + '</div>') + '</td></tr>';
+    }).join('') + '</tbody></table></div>' +
+    '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted)">' +
+      'Four of six lines would have come back rejected. They are caught here, before submission, against that client\'s own parsed guidelines — ' +
+      'not three weeks later in a portal reason code that someone has to interpret and decide whether to fight.' +
+    '</div>';
+
+  /* client register */
+  var page = list.slice(0, ebLimit);
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:560px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Client</th><th>Portal</th><th class="r">Rules</th><th class="r">Matters</th>' +
+    '<th class="r">Submitted</th><th class="r">Rejected</th><th class="r">Rate</th><th class="r">Appealed</th>' +
+    '<th class="r">Recovered</th><th class="r">Never recovered</th><th class="r">Days to pay</th><th>Top reason</th></tr></thead><tbody>' +
+    page.map(function (x) {
+      var top = [...x.mix].sort(function (a, b) { return b.amount - a.amount; })[0];
+      var tone = x.rate > 0.055 ? 'var(--color-red)' : x.rate > 0.035 ? 'var(--color-amber)' : 'var(--color-text-muted)';
+      return '<tr><td class="first-sticky"><b>' + esc(x.client) + '</b></td>' +
+        '<td style="font-size:11.5px">' + esc(x.portal) + '</td>' +
+        '<td class="r">' + x.ocgCount + '</td><td class="r">' + x.matters + '</td>' +
+        '<td class="r">' + fmtK(x.submitted) + '</td>' +
+        '<td class="r" style="color:var(--wv-burgundy)"><b>' + fmtK(x.rejected) + '</b></td>' +
+        '<td class="r" style="color:' + tone + '">' + fmtPct(x.rate * 100) + '</td>' +
+        '<td class="r">' + fmtK(x.appealed) + '</td>' +
+        '<td class="r" style="color:var(--color-green)">' + fmtK(x.recovered) + '</td>' +
+        '<td class="r" style="color:var(--wv-burgundy)">' + fmtK(x.unrecovered) + '</td>' +
+        '<td class="r">' + x.daysToPay + '</td>' +
+        '<td style="font-size:11px;color:var(--color-text-muted)">' + esc(top.label.split('/')[0]) + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(list.length) + ' of ' + fmtN(M.ebillClients.length) + ' clients</b></td><td></td>' +
+      '<td class="r"><b>' + fmtN(list.reduce(function (s, x) { return s + x.ocgCount; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtN(list.reduce(function (s, x) { return s + x.matters; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(list.reduce(function (s, x) { return s + x.submitted; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(shownRej) + '</b></td><td></td>' +
+      '<td class="r"><b>' + fmtK(list.reduce(function (s, x) { return s + x.appealed; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(list.reduce(function (s, x) { return s + x.recovered; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(list.reduce(function (s, x) { return s + x.unrecovered; }, 0)) + '</b></td>' +
+      '<td></td><td></td></tr></tfoot></table></div>' +
+    (list.length > ebLimit ? '<div style="text-align:center;margin-top:14px"><button onclick="ebMore()" style="font:inherit;font-size:11.5px;font-weight:700;padding:9px 20px;border-radius:var(--radius-sm);cursor:pointer;border:1px solid var(--color-border);background:var(--color-bg-3);color:var(--color-cloud-whisper)">Show ' + Math.min(80, list.length - ebLimit) + ' more</button></div>' : '') +
+    (Math.abs(shownRej - E.rejected) < 0.5
+      ? '<div style="margin-top:12px"><span class="tie">Client detail ties to firm rejections — ' + fmt$2(E.rejected) + '</span></div>'
+      : '<div style="margin-top:12px;font-size:12px;color:var(--color-text-muted)">Filtered — ' + fmtK(shownRej) + ' of ' + fmtK(E.rejected) + '</div>');
+
+  var portals = ['all'].concat([...new Set(M.ebillClients.map(function (x) { return x.portal; }))].sort());
+  var controls =
+    '<select onchange="ebSet(\'portal\',this.value)" style="font:inherit;font-size:11.5px;font-weight:700;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--color-border);background:var(--color-bg-3);color:var(--color-cloud-whisper)">' +
+    portals.map(function (p) { return '<option value="' + esc(p) + '"' + (p === ebPortal ? ' selected' : '') + '>' + (p === 'all' ? 'All portals' : esc(p)) + '</option>'; }).join('') + '</select>' +
+    ' <input type="search" class="demo-search" placeholder="Search clients…" oninput="ebSet(\'search\',this.value)" value="' + esc(ebSearch) + '" style="min-width:170px;margin-left:6px">';
+
+  /* approval chain — bill release */
+  var chain = approvalChain('bill-cycle-2026-07', [
+    { role: 'bill',  label: 'Pre-bill review complete — narratives and codes checked' },
+    { role: 'pgl',   label: 'Billing partner approval — write-downs authorised' },
+    { role: 'cfo',   label: 'CFO release — submit to client portals' },
+  ]);
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('Billing &amp; e-billing — ' + M.asOfLabel,
+      '<em>' + fmtK(E.unrecovered) + '</em> written off in silence.',
+      'Client portals reject ' + fmtPct(E.rejRate * 100) + ' of everything the firm submits. Only ' +
+      fmtPct(E.appealed / E.rejected * 100) + ' of it gets appealed, because finding the rest costs more than most lines are worth. ' +
+      'This page finds them — and stops most of them ever being submitted.',
+      ['ebill', 'e3e', 'intapp', 'wv']) +
+    '<div class="demo-kpis" style="grid-template-columns:repeat(auto-fit,minmax(205px,1fr))">' + kpis.join('') + '</div>' +
+    panel('Why invoices come back', srcChip('ebill') + ' · reason taxonomy across every portal', reasonPanel, ' style="margin-bottom:18px"') +
+    panel('Pre-submission compliance check', srcChip('intapp') + ' ' + srcChip('e3e') + ' · live against client guidelines', checkPanel, ' style="margin-bottom:18px"') +
+    panel('Rejections by client', controls, tbl, ' style="margin-bottom:18px"') +
+    panel('July 2026 billing cycle — release chain', 'role-gated · e-signed', chain);
+}
+
+function median(a) { var s = [...a].sort(function (x, y) { return x - y; }); return s[Math.floor(s.length / 2)]; }
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

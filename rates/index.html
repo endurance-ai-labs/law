@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rates &amp; Exceptions · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801a">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js"></script>
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+/* modeler state — var, before the first render() */
+var rtIncrease = 6.0;
+var rtDrag = 0.35;
+var rtPushback = 12;
+
+function rtSet(k, v) {
+  if (k === 'inc') rtIncrease = parseFloat(v);
+  if (k === 'drag') rtDrag = parseFloat(v);
+  if (k === 'push') rtPushback = parseFloat(v);
+  renderModel();
+}
+
+function render() {
+  var M = window.MODEL, F = M.firm, RC = M.rateCard;
+  if (!currentPersona()) return;
+  if (!can('fin')) {
+    document.getElementById('root').innerHTML = hero('Rates', 'Restricted.', 'Rate data requires financial access.', ['e3e']);
+    return;
+  }
+
+  var kpis = [
+    kpi('Blended standard rate', fmt$(F.standardRate), 'across ' + fmtN(F.hours, 0) + ' hours', '',
+      'Standard value ÷ hours|' + fmt$(F.standardValue) + ' ÷ ' + fmtN(F.hours, 0)),
+    kpi('Blended effective rate', fmt$(F.effectiveRate), 'what an hour earns', 'amber',
+      'Collected ÷ hours|The rate card is an aspiration; this is the outcome'),
+    kpi('Rate leakage', fmt$(F.rateLeak), fmtPct(F.rateLeak / F.standardRate * 100) + ' of the card', 'amber',
+      'Standard − effective|Across ' + fmtN(F.hours, 0) + ' hours = ' + fmtK(F.rateLeak * F.hours) + ' a year'),
+    kpi('Partner rate range', fmt$(minMax(RC, 'EP')[0]) + '–' + fmt$(minMax(RC, 'EP')[1]), 'equity partners', ''),
+    kpi('Associate rate range', fmt$(minMax(RC, 'ASC')[0]) + '–' + fmt$(minMax(RC, 'ASC')[1]), 'by class year and office', ''),
+    kpi('Rate exceptions', fmtN(RC.exceptions.length), 'clients holding a discount', 'amber'),
+    kpi('Exception cost', fmtK(RC.exceptions.reduce(function (s, e) { return s + e.revenue * e.discount; }, 0)),
+      'a year, at current volumes', 'amber',
+      'Sum of each client\'s revenue × their agreed discount|The cost of the exception register, which most firms have never totalled'),
+    kpi('Expiring within 90 days', fmtN(RC.exceptions.filter(function (e) { return e.status === 'Expiring'; }).length),
+      'require renegotiation ' + tie('/law/clients/', 'Clients'), 'amber'),
+  ];
+
+  /* rate card grid */
+  var cardTbl = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Class</th>' +
+    M.offices.map(function (o) { return '<th class="r">' + o.name + '</th>'; }).join('') +
+    '<th class="r">Firm avg</th><th class="r">Cost/hr</th><th class="r">Spread</th></tr></thead><tbody>' +
+    Object.keys(RC.grid).map(function (k) {
+      var g = RC.grid[k];
+      var all = Object.values(g.offices);
+      var avg = all.reduce(function (s, x) { return s + x.rate * x.n; }, 0) / all.reduce(function (s, x) { return s + x.n; }, 0);
+      var cost = all.reduce(function (s, x) { return s + x.cost * x.n; }, 0) / all.reduce(function (s, x) { return s + x.n; }, 0);
+      return '<tr><td class="first-sticky"><b>' + esc(g.label) + '</b></td>' +
+        M.offices.map(function (o) {
+          var x = g.offices[o.id];
+          return '<td class="r">' + (x ? fmt$(x.rate) + '<div style="font-size:10px;color:var(--color-slate-hint)">n=' + x.n + '</div>' : '—') + '</td>';
+        }).join('') +
+        '<td class="r"><b>' + fmt$(avg) + '</b></td>' +
+        '<td class="r" style="color:var(--color-text-muted)">' + fmt$(cost) + '</td>' +
+        '<td class="r" style="color:var(--color-green)">' + fmtPct((1 - cost / avg) * 100) + '</td></tr>';
+    }).join('') + '</tbody></table></div>' +
+    '<div style="margin-top:13px;padding-top:12px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted)">' +
+      'Cost per hour comes from payroll, not from the rate card. The spread column is the only honest measure of whether a class is priced correctly — ' +
+      'and it is the column no rate card contains. ' + tie('/law/profitability/', 'Profitability') +
+    '</div>';
+
+  /* exception register */
+  var excTbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:420px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Client</th><th class="r">Revenue TTM</th><th class="r">Discount</th>' +
+    '<th class="r">Annual cost</th><th>Expires</th><th>Approved by</th><th>Status</th></tr></thead><tbody>' +
+    RC.exceptions.map(function (e) {
+      return '<tr><td class="first-sticky"><b>' + esc(e.client) + '</b></td>' +
+        '<td class="r">' + fmtK(e.revenue) + '</td>' +
+        '<td class="r" style="color:var(--wv-burgundy)">' + fmtPct(e.discount * 100) + '</td>' +
+        '<td class="r" style="color:var(--wv-burgundy)"><b>' + fmtK(e.revenue * e.discount) + '</b></td>' +
+        '<td>' + fmtDate(e.expires) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(e.approvedBy) + '</td>' +
+        '<td>' + pill(e.status, e.status === 'Expiring' ? 'amber' : e.status === 'Pending review' ? 'blue' : 'green') + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + RC.exceptions.length + ' exceptions</b></td>' +
+      '<td class="r"><b>' + fmtK(RC.exceptions.reduce(function (s, e) { return s + e.revenue; }, 0)) + '</b></td><td></td>' +
+      '<td class="r"><b>' + fmtK(RC.exceptions.reduce(function (s, e) { return s + e.revenue * e.discount; }, 0)) + '</b></td>' +
+      '<td></td><td></td><td></td></tr></tfoot></table></div>';
+
+  /* the modeler */
+  var modeler =
+    '<div style="display:grid;grid-template-columns:300px 1fr;gap:26px;align-items:start" class="rt-cols">' +
+    '<div>' +
+      sl('Standard rate increase', 'inc', rtIncrease, 0, 15, 0.5, '%') +
+      sl('Realization drag', 'drag', rtDrag, 0, 1, 0.05, '× the increase') +
+      '<div style="font-size:11.5px;color:var(--color-text-muted);line-height:1.6;margin-top:6px">Raising the card does not raise realization with it. Historically about a third of any increase is given back through discounts, write-downs and short-pays.</div>' +
+      sl('Clients who push back', 'push', rtPushback, 0, 40, 1, '% of revenue') +
+      '<div style="font-size:11.5px;color:var(--color-text-muted);line-height:1.6;margin-top:6px">Clients on guidelines with rate freezes cannot be increased at all. This models them holding flat rather than leaving.</div>' +
+    '</div>' +
+    '<div id="rt-out"></div></div>';
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('Rates &amp; exceptions — ' + M.asOfLabel,
+      'The card says <em>' + fmt$(F.standardRate) + '</em>. An hour earns <em>' + fmt$(F.effectiveRate) + '</em>.',
+      'The gap is ' + fmt$(F.rateLeak) + ' an hour, or ' + fmtK(F.rateLeak * F.hours) + ' a year. ' +
+      'Setting next year\'s rates without modelling that gap is how firms raise the card and collect the same money.',
+      ['e3e', 'ebill', 'wv']) +
+    '<div class="demo-kpis" style="grid-template-columns:repeat(auto-fit,minmax(205px,1fr))">' + kpis.join('') + '</div>' +
+    panel('Rate increase modeler', srcChip('wv') + ' · what an increase actually nets', modeler, ' style="margin-bottom:18px"') +
+    panel('Standard rate card', srcChip('e3e') + ' ' + srcChip('adp') + ' · ' + fmtN(M.timekeepers.length) + ' timekeepers', cardTbl, ' style="margin-bottom:18px"') +
+    panel('Rate exception register', srcChip('e3e') + ' ' + srcChip('intapp'), excTbl);
+
+  renderModel();
+}
+
+function sl(label, key, val, min, max, step, unit) {
+  return '<div style="margin-bottom:20px">' +
+    '<label style="display:flex;justify-content:space-between;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--color-slate-hint);margin-bottom:8px">' +
+    '<span>' + label + '</span><span style="color:var(--color-blue)">' + val + (unit === '%' ? '%' : '') + '</span></label>' +
+    '<input type="range" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" oninput="rtSet(\'' + key + '\',this.value)" style="width:100%;accent-color:var(--color-blue)">' +
+    (unit !== '%' ? '<div style="font-size:10.5px;color:var(--color-slate-hint);margin-top:4px">' + unit + '</div>' : '') +
+    '</div>';
+}
+
+function renderModel() {
+  var M = window.MODEL, F = M.firm;
+  var el = document.getElementById('rt-out');
+  if (!el) return;
+
+  var inc = rtIncrease / 100;
+  var effectiveInc = inc * (1 - rtPushback / 100);          // frozen clients get nothing
+  var newStandard = F.standardValue * (1 + effectiveInc);
+  var realzNow = F.realization;
+  var realzNew = realzNow - (effectiveInc * rtDrag);         // the drag
+  var newCollected = newStandard * realzNew;
+  var delta = newCollected - F.collected;
+  var naive = F.collected * (1 + inc);                       // what people assume they'll get
+
+  var rows = [
+    ['Standard value today', F.standardValue, ''],
+    ['Standard value after increase', newStandard, ''],
+    ['Realization today', realzNow, 'pct'],
+    ['Realization after drag', realzNew, 'pct'],
+    ['Collected today', F.collected, ''],
+    ['Collected after increase', newCollected, 'net'],
+  ];
+
+  el.innerHTML =
+    '<div style="background:var(--color-bg-3);border:1px solid var(--color-border);border-left:3px solid ' +
+      (delta > 0 ? 'var(--color-green)' : 'var(--color-red)') + ';border-radius:var(--radius-md);padding:20px 22px;margin-bottom:16px">' +
+      '<div style="font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--color-slate-hint)">Net revenue effect</div>' +
+      '<div style="font-size:34px;font-weight:800;letter-spacing:-.02em;margin:5px 0 2px;color:' + (delta > 0 ? 'var(--color-green)' : 'var(--color-red)') + '">' +
+        (delta > 0 ? '+' : '') + fmtK(delta) + '</div>' +
+      '<div style="font-size:12.5px;color:var(--color-text-muted)">A ' + rtIncrease.toFixed(1) + '% increase on the card. ' +
+        'The naive expectation is <b>' + fmtK(naive - F.collected) + '</b> — this model says <b>' + fmtK(delta) + '</b>, ' +
+        'a difference of <b style="color:var(--wv-burgundy)">' + fmtK((naive - F.collected) - delta) + '</b>.</div>' +
+    '</div>' +
+    '<table class="demo-tbl"><tbody>' +
+    rows.map(function (r) {
+      return '<tr><td>' + r[0] + '</td><td class="r"' + (r[2] === 'net' ? ' style="font-weight:800"' : '') + '>' +
+        (r[2] === 'pct' ? fmtPct(r[1] * 100) : fmt$(r[1])) + '</td></tr>';
+    }).join('') +
+    '</tbody></table>' +
+    '<div style="margin-top:14px;font-size:12px;color:var(--color-text-muted);line-height:1.6">' +
+      'Every partner in the room believes a ' + rtIncrease.toFixed(1) + '% increase is worth ' + fmtK(naive - F.collected) + '. ' +
+      'It is worth ' + fmtK(delta) + ', because ' + fmtPct(rtPushback) + ' of revenue sits behind a rate freeze and about ' +
+      fmtPct(rtDrag * 100, 0) + ' of what remains gets given back. This is the conversation the rate committee should be having.' +
+    '</div>';
+}
+
+function minMax(RC, cls) {
+  var all = Object.values(RC.grid[cls].offices);
+  return [Math.min.apply(null, all.map(function (x) { return x.lo; })),
+          Math.max.apply(null, all.map(function (x) { return x.hi; }))];
+}
+
+if (isSignedIn()) render();
+</script>
+<style>@media(max-width:900px){ .rt-cols { grid-template-columns: 1fr !important; } }</style>
+</body>
+</html>

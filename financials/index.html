@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P&amp;L and Balance Sheet · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801a">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js"></script>
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+function render() {
+  var M = window.MODEL, F = M.firm, P = M.pnl, B = M.budget;
+  if (!currentPersona()) return;
+  if (!can('fin')) {
+    document.getElementById('root').innerHTML = hero('P&L and balance sheet', 'Restricted.',
+      'Firm financial statements require financial access.', ['e3e']);
+    return;
+  }
+
+  var kpis = [
+    kpi('Fee revenue', fmtK(P.revenue), 'ties to every other page ' + tie('/law/', 'Dashboard'), '',
+      'Collected fees, trailing 12 months|The same figure the dashboard, revenue page and client book report'),
+    kpi('Prior year', fmtK(P.pyRevenue), fmtPct((P.revenue / P.pyRevenue - 1) * 100) + ' growth',
+      P.revenue > P.pyRevenue ? 'green' : 'amber'),
+    kpi('Total expense', fmtK(P.totalExpense), fmtPct(P.totalExpense / P.revenue * 100) + ' of revenue', ''),
+    kpi('Net income', fmtK(P.netIncome), fmtPct(P.netMargin * 100) + ' net margin', 'green',
+      'Revenue − all expense|Identical to the contribution margin on the profitability page|' + fmt$2(P.netIncome)),
+    kpi('Profit per equity partner', fmtK(P.perEquityPartner), M.firm.partners + ' equity partners', 'green',
+      'Net income ÷ equity partners|' + fmt$(P.netIncome) + ' ÷ ' + M.firm.partners),
+    kpi('Revenue per lawyer', fmtK(P.revenue / F.lawyers), F.lawyers + ' lawyers', ''),
+    kpi('Expense per lawyer', fmtK(P.totalExpense / F.lawyers), 'all-in', ''),
+    kpi('Compensation ratio', fmtPct(compRatio(P) * 100), 'of revenue', '',
+      'All compensation lines ÷ revenue|Partner, associate, paralegal and business services compensation'),
+  ];
+
+  /* P&L statement */
+  var rows = '';
+  P.groups.forEach(function (g) {
+    var lines = P.lines.filter(function (l) { return l.g === g; });
+    if (!lines.length) return;
+    rows += '<tr class="grp"><td colspan="5" style="padding-top:16px;font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--color-slate-hint)">' + g + '</td></tr>';
+    lines.forEach(function (l) {
+      var bl = B.lines.filter(function (b) { return b.k === l.k; })[0];
+      var favourable = bl && bl.variance >= 0;
+      rows += '<tr><td>' + esc(l.k) + '</td>' +
+        '<td class="r"' + (l.rev ? '' : '') + ' data-exp="' + esc(l.k) + '|' + fmt$2(l.v) + '|' + fmtPct(l.pct * 100) + ' of revenue">' + fmt$(l.v) + '</td>' +
+        '<td class="r">' + fmtPct(l.pct * 100) + '</td>' +
+        '<td class="r" style="color:var(--color-text-muted)">' + fmt$(l.py) + '</td>' +
+        '<td class="r" style="color:' + (favourable ? 'var(--color-green)' : 'var(--color-red)') + '">' +
+          (bl ? (bl.variance >= 0 ? '▲ ' : '▼ ') + fmtK(Math.abs(bl.variance)) : '—') + '</td></tr>';
+    });
+    if (g === 'Revenue') {
+      rows += '<tr class="sub"><td><b>Total revenue</b></td><td class="r"><b>' + fmt$(P.revenue) + '</b></td>' +
+        '<td class="r"><b>100.0%</b></td><td class="r">' + fmt$(P.pyRevenue) + '</td><td class="r"></td></tr>';
+    }
+  });
+  rows += '<tr class="sub"><td><b>Total expense</b></td><td class="r"><b>' + fmt$(P.totalExpense) + '</b></td>' +
+    '<td class="r"><b>' + fmtPct(P.totalExpense / P.revenue * 100) + '</b></td><td class="r"></td><td class="r"></td></tr>';
+
+  var pnlTbl = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">&nbsp;</th><th class="r">TTM actual</th><th class="r">% of revenue</th><th class="r">Prior year</th><th class="r">Vs budget</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody>' +
+    '<tfoot><tr class="totals-row"><td><b>Net income</b></td><td class="r"><b>' + fmt$(P.netIncome) + '</b></td>' +
+      '<td class="r"><b>' + fmtPct(P.netMargin * 100) + '</b></td>' +
+      '<td class="r">' + fmt$(P.pyRevenue - (P.totalExpense * P.pyRevenue / P.revenue)) + '</td>' +
+      '<td class="r" style="color:' + (P.netIncome >= B.niBudget ? 'var(--color-green)' : 'var(--color-red)') + '">' +
+        (P.netIncome >= B.niBudget ? '▲ ' : '▼ ') + fmtK(Math.abs(P.netIncome - B.niBudget)) + '</td></tr></tfoot></table></div>' +
+    '<div style="margin-top:12px"><span class="tie">Net income ties to firm margin — ' + fmt$2(P.netIncome) + '</span> ' +
+    '<span class="tie">and to Profitability</span></div>';
+
+  /* balance sheet — the assets a firm actually has */
+  var cash = F.collected * 0.081;
+  var fixed = F.collected * 0.043;
+  var deposits = F.collected * 0.012;
+  var assets = [
+    ['Cash and cash equivalents', cash, 'Operating and trust-separate accounts'],
+    ['Unbilled work in progress', F.wip, 'Time recorded, not yet invoiced ' + tie('/law/lockup/', 'Lockup')],
+    ['Accounts receivable', F.arTotal, 'Invoiced, not yet collected ' + tie('/law/lockup/', 'Lockup')],
+    ['Client disbursements recoverable', F.costs * 0.65, 'Advanced on behalf of clients'],
+    ['Fixed assets, net', fixed, 'Leasehold improvements, technology, furniture'],
+    ['Deposits and prepayments', deposits, 'Lease deposits, insurance, subscriptions'],
+  ];
+  var totalAssets = assets.reduce(function (s, a) { return s + a[1]; }, 0);
+  var liabs = [
+    ['Accounts payable and accruals', totalAssets * 0.094, 'Vendors, experts, court reporters'],
+    ['Bank revolver', totalAssets * 0.131, 'Drawn against lockup — the reason lockup days matter'],
+    ['Client monies held (trust)', totalAssets * 0.062, 'Segregated — never firm funds ' + tie('/law/trust/', 'Trust')],
+    ['Deferred compensation', totalAssets * 0.088, 'Partner retirement and unfunded obligations'],
+    ['Lease liabilities', totalAssets * 0.147, 'Six offices, discounted'],
+  ];
+  var totalLiabs = liabs.reduce(function (s, a) { return s + a[1]; }, 0);
+  var capital = totalAssets - totalLiabs;
+
+  var bsTbl = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:22px" class="bs-cols">' +
+    ['Assets', 'Liabilities and partners\' capital'].map(function (side, i) {
+      var list = i === 0 ? assets : liabs;
+      var tot = i === 0 ? totalAssets : totalLiabs;
+      return '<div><div style="font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--color-slate-hint);margin-bottom:10px">' + side + '</div>' +
+        '<table class="demo-tbl"><tbody>' +
+        list.map(function (a) {
+          return '<tr><td>' + a[0] + '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + a[2] + '</div></td>' +
+            '<td class="r">' + fmt$(a[1]) + '</td></tr>';
+        }).join('') +
+        (i === 1 ? '<tr><td><b>Partners\' capital</b><div style="font-size:10.5px;color:var(--color-slate-hint)">Contributed and undistributed</div></td><td class="r"><b>' + fmt$(capital) + '</b></td></tr>' : '') +
+        '</tbody><tfoot><tr class="totals-row"><td><b>Total ' + (i === 0 ? 'assets' : 'liabilities and capital') + '</b></td>' +
+        '<td class="r"><b>' + fmt$(i === 0 ? totalAssets : tot + capital) + '</b></td></tr></tfoot></table></div>';
+    }).join('') + '</div>' +
+    '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted)">' +
+      '<b>' + fmtK(F.wip + F.arTotal) + '</b> — ' + fmtPct((F.wip + F.arTotal) / totalAssets * 100) + ' of the balance sheet — is work the firm has done and not been paid for. ' +
+      'It is the largest asset the firm owns and the one it manages least. ' + tie('/law/lockup/', 'Lockup') +
+    '</div>';
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('P&amp;L and balance sheet — ' + M.asOfLabel,
+      'The monthly package, <em>generated</em>.',
+      'Every line decomposes to the matters underneath it, so the statement can never disagree with the dashboard. ' +
+      'Nineteen days of assembly, removed.',
+      ['e3e', 'adp', 'wv']) +
+    '<div class="demo-kpis" style="grid-template-columns:repeat(auto-fit,minmax(205px,1fr))">' + kpis.join('') + '</div>' +
+    panel('Statement of income — trailing twelve months', srcChip('e3e') + ' ' + srcChip('adp') + ' · hover any figure', pnlTbl, ' style="margin-bottom:18px"') +
+    panel('Balance sheet', srcChip('e3e') + ' · ' + M.asOf, bsTbl, ' style="margin-bottom:18px"') +
+    panel('Revenue and margin — 24 months', srcChip('e3e'),
+      '<div class="demo-chart" style="height:280px"><canvas id="ch-fin"></canvas></div>');
+
+  var el = document.getElementById('ch-fin');
+  if (el && typeof Chart !== 'undefined') {
+    var light = document.documentElement.getAttribute('data-theme') === 'light';
+    var text = light ? '#5b6472' : '#a2a2ac';
+    new Chart(el, {
+      type: 'bar',
+      data: { labels: M.series.map(function (s) { return s.label; }),
+        datasets: [
+          { label: 'Collected', data: M.series.map(function (s) { return s.collected; }),
+            backgroundColor: light ? '#2b4a8b' : '#6d8fd8', borderWidth: 0, order: 2 },
+          { label: 'Margin', type: 'line', data: M.series.map(function (s) { return s.margin; }),
+            borderColor: '#4f7d5d', borderWidth: 2, pointRadius: 0, tension: 0.3, order: 1 },
+        ] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: text, boxWidth: 10, font: { size: 11 } } },
+          tooltip: { callbacks: { label: function (c) { return c.dataset.label + ': ' + fmt$(c.parsed.y); } } } },
+        scales: { x: { grid: { display: false }, ticks: { color: text, font: { size: 10 } } },
+          y: { grid: { color: light ? 'rgba(27,34,48,.08)' : 'rgba(255,255,255,.07)' },
+               ticks: { color: text, font: { size: 10 }, callback: function (v) { return fmtK(v); } } } } },
+    });
+  }
+}
+
+function compRatio(P) {
+  var comp = P.lines.filter(function (l) { return /compensation/i.test(l.k); })
+                    .reduce(function (s, l) { return s + l.v; }, 0);
+  return comp / P.revenue;
+}
+
+if (isSignedIn()) render();
+</script>
+<style>
+.demo-tbl tr.sub td { border-top: 1px solid var(--color-border); font-weight: 800; }
+@media(max-width:860px){ .bs-cols { grid-template-columns: 1fr !important; } }
+</style>
+</body>
+</html>

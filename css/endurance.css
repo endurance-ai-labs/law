@@ -1,0 +1,190 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* ============================================================
+   CFP Portal — Margins skin layer
+   Component-level restyles on top of the Margins token palette in
+   tokens.css (charcoal rail dark mode · cool off-white light mode ·
+   Margins blue #2766d6 · system sans w/ bold tight headings).
+   Injected globally AFTER theme.css by functions/_middleware.js —
+   no page markup edits required. (File keeps its historical name so
+   the middleware injection path stays stable.)
+   ============================================================ */
+
+/* ---- Retire the webfont serif: legacy pages hardcode
+   'Playfair Display' — alias it to the system sans so every display
+   heading goes bold-sans without editing 40 pages. ---- */
+@font-face { font-family: 'Playfair Display'; font-style: normal; font-weight: 400; src: local('Segoe UI'), local('Helvetica Neue'), local('Arial'); }
+@font-face { font-family: 'Playfair Display'; font-style: normal; font-weight: 700; src: local('Segoe UI Bold'), local('Helvetica Neue Bold'), local('Arial Bold'); }
+@font-face { font-family: 'Playfair Display'; font-style: normal; font-weight: 800; src: local('Segoe UI Black'), local('Arial Black'); }
+@font-face { font-family: 'Playfair Display'; font-style: italic; font-weight: 400; src: local('Segoe UI Italic'), local('Arial Italic'); }
+@font-face { font-family: 'Playfair Display'; font-style: italic; font-weight: 700; src: local('Segoe UI Bold Italic'), local('Arial Bold Italic'); }
+@font-face { font-family: 'Instrument Serif'; font-style: normal; font-weight: 400; src: local('Segoe UI'), local('Helvetica Neue'), local('Arial'); }
+@font-face { font-family: 'Instrument Serif'; font-style: italic; font-weight: 400; src: local('Segoe UI Italic'), local('Arial Italic'); }
+
+/* ---- Font: Inter (the Margins app face) — override here too so it
+   applies even if the cached tokens.css hasn't refetched. ---- */
+:root { --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+
+/* ---- Ground: metallic light-gray with a subtle gloss (institutional
+   "sister" of the Margins console). White cards float above brushed
+   silver; dark mode stays clean charcoal. ---- */
+html, body { background-image: none !important; }
+
+[data-theme="light"] body {
+  background-color: #e4e7ec !important;
+  background-image:
+    /* soft top highlight — the "gloss" */
+    radial-gradient(1400px 620px at 50% -12%, rgba(255,255,255,0.85), rgba(255,255,255,0) 60%),
+    /* faint cool sheen sweeping across */
+    linear-gradient(104deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.35) 42%, rgba(255,255,255,0) 60%),
+    /* vertical metal grade: lighter top → deeper silver bottom */
+    linear-gradient(180deg, #eef1f5 0%, #e6e9ef 46%, #dce0e7 100%) !important;
+  background-attachment: fixed !important;
+  background-repeat: no-repeat !important;
+}
+/* Cards lift off the metal a touch more for the premium float */
+[data-theme="light"] .card,
+[data-theme="light"] .demo-panel,
+[data-theme="light"] .demo-kpi,
+[data-theme="light"] .ab-rail-box,
+[data-theme="light"] .sreo-doc,
+[data-theme="light"] .pfs-doc,
+[data-theme="light"] .amr {
+  box-shadow: 0 1px 1px rgba(20,28,45,0.04), 0 6px 20px rgba(20,28,45,0.08), 0 1px 0 rgba(255,255,255,0.9) inset !important;
+}
+/* Topbar picks up a faint brushed sheen so it reads as one piece with the metal */
+[data-theme="light"] .portal-topbar {
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,255,255,0.42)) !important;
+  border-bottom: 1px solid rgba(20,28,45,0.10) !important;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.8) inset;
+}
+
+/* ---- Topbar brand — Endurance logo + mono wordmark (kept) ---- */
+.brand .ea-logo { height: 16px; width: auto; display: block; }
+[data-theme="light"] .brand .ea-logo { filter: brightness(0.2); }
+.brand .ea-brand-divider {
+  width: 1px; height: 22px; background: var(--color-border);
+  display: inline-block; margin: 0 12px;
+}
+/* Brand lockup must never bleed into the centered nav: the grid column is 1fr,
+   so the text block truncates with an ellipsis instead of overflowing. */
+.portal-topbar .brand { min-width: 0; overflow: hidden; }
+.brand .ea-brand-text {
+  display: flex; flex-direction: column; gap: 1px;
+  font-family: var(--font-mono);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--color-cloud-whisper); line-height: 1.2;
+  min-width: 0; overflow: hidden;
+}
+.brand .ea-brand-text em {
+  font-style: normal; font-size: 8.5px; letter-spacing: 0.1em;
+  color: var(--color-blue); text-transform: none;
+  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+/* Mid-width screens: drop the tagline entirely before it can crowd the nav */
+@media (max-width: 1280px) { .brand .ea-brand-text em { display: none; } }
+@media (max-width: 1080px) { .brand .ea-brand-text { display: none; } .brand .ea-brand-divider { display: none; } }
+
+/* ---- Display headings: bold, tight (Margins) ---- */
+.home-hero-greeting { font-weight: 800 !important; letter-spacing: -0.02em !important; }
+.home-hero-greeting .accent { font-style: normal !important; color: var(--color-blue) !important; }
+.home-hero-quote-text { font-style: normal; }
+
+/* ---- Home hero — retint to Margins blue + light-mode legibility.
+   The home page hardcodes white text for a dark ground; restore ink
+   in light mode so the default-light portal reads cleanly. ---- */
+.hero-stat .v { color: var(--color-blue-light) !important; text-shadow: none !important; }
+a.hero-stat:hover .v { color: var(--color-cloud-whisper) !important; text-shadow: none !important; }
+.news-hero-main .img { background-color: #1b3e63 !important; }
+
+[data-theme="light"] .home-hero-greeting,
+[data-theme="light"] .home-hero-quote-text,
+[data-theme="light"] .home-hero-quote-eyebrow ~ .home-hero-quote-text,
+[data-theme="light"] .home-hero-pulse code,
+[data-theme="light"] .home-hero-pulse .num { color: var(--color-cloud-whisper) !important; }
+[data-theme="light"] .home-hero-pulse { color: var(--color-text-muted) !important; }
+[data-theme="light"] .hero-stat .l { color: var(--color-cloud-whisper) !important; }
+[data-theme="light"] .hero-stat .s { color: var(--color-text-muted) !important; }
+[data-theme="light"] .home-hero-quote {
+  background: var(--color-bg-2) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: 0 1px 2px rgba(30,30,36,0.04), 0 4px 16px rgba(30,30,36,0.05);
+}
+[data-theme="light"] .home-hero-quote-author { border-top-color: var(--color-border) !important; }
+[data-theme="light"] .home-hero-fresh .cfp-fresh {
+  background: var(--color-bg-3) !important; border-color: var(--color-border) !important;
+  color: var(--color-text-muted) !important;
+}
+[data-theme="light"] .home-hero-fresh .cfp-fresh b { color: var(--color-cloud-whisper) !important; }
+[data-theme="light"] .hero-stats { border-top-color: var(--color-border) !important; }
+[data-theme="light"] .hero-stat { border-left-color: var(--color-border) !important; }
+[data-theme="light"] .home-hero-pulse .delta-up { color: #b1503f !important; }
+[data-theme="light"] .home-hero-pulse .delta-dn { color: #4f7d5d !important; }
+
+/* ---- Blinking-dot eyebrow (blue) ---- */
+@keyframes eaBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.ea-eyebrow {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--color-blue); margin-bottom: 14px; font-weight: 600;
+}
+.ea-eyebrow::before {
+  content: ''; width: 7px; height: 7px; border-radius: 999px;
+  background: var(--color-blue);
+  animation: eaBlink 2.4s cubic-bezier(0.4,0,0.2,1) infinite;
+}
+@media (prefers-reduced-motion: reduce) { .ea-eyebrow::before { animation: none; } }
+
+/* ---- Brain-core constellation (home hero) ---- */
+.ea-brain-core { position: relative; width: 100%; max-width: 300px; margin: 0 auto 6px; }
+.ea-brain-core svg { width: 100%; height: auto; display: block; }
+@media (max-width: 900px) { .ea-brain-core { max-width: 220px; } }
+
+/* ---- Brain CTA pill — Margins blue ---- */
+.nav-cta {
+  background: linear-gradient(135deg, #2766d6, #1b3e63) !important;
+  box-shadow: 0 2px 10px rgba(39,102,214,0.35) !important;
+}
+
+/* ---- Junkyard dropdown (top-right) ---- */
+.ea-junkyard { position: relative; }
+.ea-junkyard .ea-junkyard-trigger {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 10px; border-radius: var(--radius-sm);
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--nav-icon-color); cursor: pointer; white-space: nowrap;
+}
+.ea-junkyard:hover .ea-junkyard-trigger {
+  background: var(--nav-icon-hover-bg); color: var(--nav-icon-hover-color);
+}
+.ea-junkyard .ea-junkyard-menu {
+  display: none; position: absolute; top: 100%; right: 0; z-index: 1200;
+  min-width: 210px; padding: 6px 0;
+  background: var(--nav-dropdown-bg); border: 1px solid var(--nav-dropdown-border);
+  border-radius: var(--radius-sm); box-shadow: var(--nav-dropdown-shadow);
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+}
+.ea-junkyard:hover .ea-junkyard-menu, .ea-junkyard.open .ea-junkyard-menu { display: block; }
+.ea-junkyard .ea-junkyard-menu a {
+  display: block; padding: 8px 16px; font-size: 12px;
+  color: var(--nav-dropdown-text); text-decoration: none;
+}
+.ea-junkyard .ea-junkyard-menu a:hover { background: var(--nav-dropdown-hover-bg); }
+.ea-junkyard .ea-junkyard-note {
+  padding: 8px 16px 6px; font-family: var(--font-mono); font-size: 9px;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-slate-hint);
+  border-bottom: 1px solid var(--nav-dropdown-divider); margin-bottom: 4px;
+}
+@media (max-width: 900px) { .ea-junkyard { display: none; } }
+
+/* ---- News category pills (global, incl. construction) — Margins palette ---- */
+.cat-pill.transactions   { background: #b1503f !important; }
+.cat-pill.financings     { background: #6d5bd0 !important; }
+.cat-pill.construction   { background: #2f7d6b !important; }
+.cat-pill.renter_trends  { background: #2766d6 !important; }
+.cat-pill.economic       { background: #1b3e63 !important; }
+.cat-pill.market_research{ background: #b98a36 !important; }
+.cat-pill.msa_driver     { background: #4f7d5d !important; }
+.cat-pill.general        { background: #6b7688 !important; }

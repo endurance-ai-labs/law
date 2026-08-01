@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profitability · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801a">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js"></script>
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() */
+var pfDim = 'practice';
+var pfView = 'all';
+var pfSearch = '';
+var pfLimit = 40;
+
+function pfSet(k, v) {
+  if (k === 'dim') pfDim = v;
+  if (k === 'view') pfView = v;
+  if (k === 'search') pfSearch = (v || '').toLowerCase();
+  pfLimit = 40; render();
+}
+function pfMore() { pfLimit += 80; render(); }
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+  if (!can('margin')) {
+    document.getElementById('root').innerHTML = hero('Profitability', 'Restricted.',
+      'Matter profitability requires margin access. Cost rates are sourced from payroll and are not visible to your role.', ['adp']);
+    return;
+  }
+
+  var mine = scopeMatters(M.matters);
+  var R = M.rollup(mine);
+  R.marginPct = R.margin / R.collected;
+
+  var loss = mine.filter(function (m) { return m.active && m.margin < 0; })
+                 .sort(function (a, b) { return a.margin - b.margin; });
+  var lossTotal = loss.reduce(function (s, m) { return s + m.margin; }, 0);
+
+  var kpis = [
+    kpi('Contribution margin', fmtPct(R.marginPct * 100), fmtK(R.margin) + ' ' + tie('/law/', 'Dashboard'), 'green',
+      'Collections − cost of hours − allocated overhead − net disbursements|' + fmt$(R.collected) + ' collected|' +
+      fmt$(R.workCost) + ' direct work cost|' + fmt$(R.overhead) + ' allocated overhead'),
+    kpi('Direct work cost', fmtK(R.workCost), 'hours × cost rate from payroll', '',
+      'Sum of hours × each timekeeper\'s fully-loaded cost rate|Cost rate = compensation + benefits + allocated overhead ÷ 1,900 hours|Source: ADP'),
+    kpi('Allocated overhead', fmtK(R.overhead), fmtPct(M.overheadK * 100, 0) + ' of direct cost', '',
+      'Occupancy, technology, business services, insurance, marketing|Allocated at ' + fmtPct(M.overheadK * 100, 0) + ' of direct work cost|The allocation basis is on this page — most firms argue about it in a meeting instead'),
+    kpi('Loss-making matters', fmtN(loss.length), fmtPct(loss.length / R.active * 100) + ' of active work', 'amber',
+      'Active matters where collections do not cover the cost of the hours plus overhead|Combined ' + fmt$(lossTotal) + '|Not low-margin — genuinely underwater'),
+    kpi('Cost of those matters', fmtK(Math.abs(lossTotal)), 'a year, every year', 'amber'),
+    kpi('Best practice group', bestWorst(M, mine, 'practice', true), 'by margin', 'green'),
+    kpi('Weakest practice group', bestWorst(M, mine, 'practice', false), 'by margin', 'amber'),
+    kpi('Margin per lawyer', fmtK(R.margin / (can('firm') ? M.firm.lawyers : Math.max(1, M.lawyers.filter(function (t) { return t.practice === (currentPersona().group || ''); }).length))),
+      'after all allocations', ''),
+  ];
+
+  /* dimension table */
+  var dims = {
+    practice: { label: 'Practice group', fn: function (m) { return m.practice; } },
+    office:   { label: 'Office',         fn: function (m) { var o = M.offices.find(function (x) { return x.id === m.office; }); return o ? o.name : m.office; } },
+    fee:      { label: 'Fee arrangement',fn: function (m) { return m.feeLabel; } },
+    partner:  { label: 'Billing partner',fn: function (m) { return m.partnerName; } },
+  };
+  var d = dims[pfDim];
+  var map = M.rollupMap(mine, d.fn);
+  var rows = Object.keys(map).map(function (k) { return { name: k, r: map[k] }; })
+    .filter(function (x) { return !pfSearch || x.name.toLowerCase().indexOf(pfSearch) !== -1; })
+    .sort(function (a, b) { return b.r.margin - a.r.margin; });
+  var shown = pfDim === 'partner' ? rows.slice(0, pfLimit) : rows;
+
+  var dimTbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:560px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">' + d.label + '</th><th class="r">Revenue</th><th class="r">Direct cost</th>' +
+    '<th class="r">Overhead</th><th class="r">Margin</th><th class="r">Margin %</th><th class="r">Eff. rate</th>' +
+    '<th class="r">Cost/hr</th><th class="r">Leverage</th><th class="r">Matters</th></tr></thead><tbody>' +
+    shown.map(function (x) {
+      var r = x.r;
+      var tone = r.marginPct < 0.25 ? 'var(--color-red)' : r.marginPct > 0.42 ? 'var(--color-green)' : '';
+      return '<tr><td class="first-sticky"><b>' + esc(x.name) + '</b></td>' +
+        '<td class="r">' + fmtK(r.collected) + '</td>' +
+        '<td class="r">' + fmtK(r.workCost) + '</td>' +
+        '<td class="r">' + fmtK(r.overhead) + '</td>' +
+        '<td class="r"><b>' + fmtK(r.margin) + '</b></td>' +
+        '<td class="r" style="color:' + tone + '"><b>' + fmtPct(r.marginPct * 100) + '</b></td>' +
+        '<td class="r">' + fmt$(r.effectiveRate) + '</td>' +
+        '<td class="r">' + fmt$(r.workCost / r.hours) + '</td>' +
+        '<td class="r">' + r.leverage.toFixed(2) + '</td>' +
+        '<td class="r">' + fmtN(r.matters) + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>Total</b></td>' +
+      '<td class="r"><b>' + fmtK(R.collected) + '</b></td><td class="r"><b>' + fmtK(R.workCost) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(R.overhead) + '</b></td><td class="r"><b>' + fmtK(R.margin) + '</b></td>' +
+      '<td class="r"><b>' + fmtPct(R.marginPct * 100) + '</b></td>' +
+      '<td class="r"><b>' + fmt$(R.collected / R.hours) + '</b></td>' +
+      '<td class="r"><b>' + fmt$(R.workCost / R.hours) + '</b></td>' +
+      '<td class="r"><b>' + ((R.hours - R.partnerHours) / R.partnerHours).toFixed(2) + '</b></td>' +
+      '<td class="r"><b>' + fmtN(R.matters) + '</b></td></tr></tfoot></table></div>' +
+    (pfDim === 'partner' && rows.length > pfLimit
+      ? '<div style="text-align:center;margin-top:14px"><button onclick="pfMore()" style="font:inherit;font-size:11.5px;font-weight:700;padding:9px 20px;border-radius:var(--radius-sm);cursor:pointer;border:1px solid var(--color-border);background:var(--color-bg-3);color:var(--color-cloud-whisper)">Show more partners</button></div>'
+      : '<div style="margin-top:12px"><span class="tie">Margin ties to the firm dashboard — ' + fmt$2(R.margin) + '</span></div>');
+
+  /* loss-making list, with the reason named */
+  var lossTbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:460px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Matter</th><th>Client</th><th>Practice</th><th>Fee type</th>' +
+    '<th class="r">Revenue</th><th class="r">Cost + OH</th><th class="r">Margin</th><th class="r">Eff. rate</th><th class="r">Cost/hr</th><th>Why</th></tr></thead><tbody>' +
+    loss.slice(0, 30).map(function (m) {
+      var costs = m.workCost + m.overhead;
+      var why = m.staffMx > 1.6 ? 'Overstaffed — cost per hour far above the group norm'
+        : m.fee !== 'hourly' ? 'Fixed-fee overrun — hours ran past the agreed price'
+        : m.collectPct < 0.9 ? 'Client short-paid after billing'
+        : 'Write-downs exceeded what the leverage could carry';
+      return '<tr><td class="first-sticky"><b>' + esc(m.name.slice(0, 44)) + '</b><div style="font-size:10.5px;color:var(--color-slate-hint)">' + m.id + '</div></td>' +
+        '<td style="font-size:11.5px">' + esc(m.clientName) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(m.practice) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(m.feeLabel) + '</td>' +
+        '<td class="r">' + fmtK(m.collected) + '</td>' +
+        '<td class="r">' + fmtK(costs) + '</td>' +
+        '<td class="r" style="color:var(--color-red)"><b>' + fmtK(m.margin) + '</b></td>' +
+        '<td class="r">' + fmt$(m.collected / m.hours) + '</td>' +
+        '<td class="r">' + fmt$(m.workCost / m.hours) + '</td>' +
+        '<td style="font-size:11px;color:var(--color-text-muted);max-width:250px">' + why + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(loss.length) + ' loss-making matters</b></td>' +
+      '<td></td><td></td><td></td>' +
+      '<td class="r"><b>' + fmtK(loss.reduce(function (s, m) { return s + m.collected; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(loss.reduce(function (s, m) { return s + m.workCost + m.overhead; }, 0)) + '</b></td>' +
+      '<td class="r" style="color:var(--color-red)"><b>' + fmtK(lossTotal) + '</b></td>' +
+      '<td></td><td></td><td></td></tr></tfoot></table></div>';
+
+  /* methodology — put it on the page, because this is the number firms argue about */
+  var method =
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px">' +
+    [['Revenue', 'Cash collected on the matter. Not billed, not standard value — collected. Anything else flatters the answer.'],
+     ['Direct work cost', 'Every hour × that timekeeper\'s fully-loaded cost rate: compensation, benefits and employment cost ÷ 1,900 hours. Equity partners carry a notional cost so partner-heavy matters are not free.'],
+     ['Allocated overhead', fmtPct(M.overheadK * 100, 0) + ' of direct work cost — occupancy, technology, business services, insurance, marketing. A single firm-wide rate, applied consistently, disclosed here.'],
+     ['Disbursements', 'Only the unrecovered portion (35%). Recovered costs are pass-through and do not belong in margin.']
+    ].map(function (x) {
+      return '<div style="background:var(--color-bg-3);border:1px solid var(--color-border);border-radius:var(--radius-md);padding:15px 17px">' +
+        '<div style="font-size:12.5px;font-weight:800;margin-bottom:6px">' + x[0] + '</div>' +
+        '<div style="font-size:11.5px;color:var(--color-text-muted);line-height:1.6">' + x[1] + '</div></div>';
+    }).join('') + '</div>' +
+    '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted)">' +
+      'Firms argue about the overhead allocation because it is usually invisible. Putting the basis on the page ends the argument in one meeting instead of every month — ' +
+      'and any firm-wide rate applied consistently ranks matters correctly even where partners disagree about its level.' +
+    '</div>';
+
+  var dimBtns = Object.keys(dims).map(function (k) {
+    return '<button onclick="pfSet(\'dim\',\'' + k + '\')" style="font:inherit;font-size:11.5px;font-weight:700;padding:6px 12px;border-radius:var(--radius-sm);cursor:pointer;' +
+      'border:1px solid ' + (k === pfDim ? 'var(--color-blue)' : 'var(--color-border)') + ';background:' + (k === pfDim ? 'var(--color-blue-pale)' : 'var(--color-bg-3)') +
+      ';color:' + (k === pfDim ? 'var(--color-blue)' : 'var(--color-cloud-whisper)') + '">' + dims[k].label + '</button>';
+  }).join(' ') +
+  ' <input type="search" class="demo-search" placeholder="Filter…" oninput="pfSet(\'search\',this.value)" value="' + esc(pfSearch) + '" style="min-width:150px;margin-left:8px">';
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('Profitability — ' + M.asOfLabel,
+      'Not billings. <em>Margin.</em>',
+      'Hours priced at what they cost, overhead allocated on a disclosed basis, and every matter ranked by what it actually contributed. ' +
+      fmtN(loss.length) + ' active matters are underwater by ' + fmtK(Math.abs(lossTotal)) + ' — and none of them look unprofitable on a billings report.',
+      ['e3e', 'adp', 'wv']) +
+    '<div class="demo-kpis" style="grid-template-columns:repeat(auto-fit,minmax(205px,1fr))">' + kpis.join('') + '</div>' +
+    panel('Margin by ' + d.label.toLowerCase(), dimBtns, dimTbl, ' style="margin-bottom:18px"') +
+    panel('Loss-making matters', srcChip('e3e') + ' ' + srcChip('adp') + ' · active work only', lossTbl, ' style="margin-bottom:18px"') +
+    panel('How margin is calculated', 'methodology, on the page', method);
+}
+
+function bestWorst(M, mine, dim, best) {
+  var map = M.rollupMap(mine, function (m) { return m.practice; });
+  var rows = Object.keys(map).map(function (k) { return { k: k, p: map[k].marginPct }; })
+    .sort(function (a, b) { return b.p - a.p; });
+  if (!rows.length) return '—';
+  var x = best ? rows[0] : rows[rows.length - 1];
+  return '<span style="font-size:16px">' + esc(x.k) + '</span><div style="font-size:19px;margin-top:2px">' + fmtPct(x.p * 100) + '</div>';
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

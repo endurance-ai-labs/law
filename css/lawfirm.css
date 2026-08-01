@@ -1,0 +1,171 @@
+/* ============================================================
+   WHITMORE VANCE LLP — portal skin layer
+   Loaded AFTER theme.css + endurance.css + demo.css.
+   Token overrides re-brand the Margins framework to the firm's
+   indigo / burgundy; below that, portal-specific components.
+   Brand-override layer — do not
+   re-declare anything the framework already owns.
+   ============================================================ */
+
+/* ---- Brand tokens (override Margins blue) ---- */
+:root {
+  --color-blue:        #6d8fd8;   /* indigo — dark-mode accent text */
+  --color-blue-light:  #8fabe4;
+  --color-blue-pale:   rgba(43, 74, 139, 0.16);
+  --color-deep-violet: #a8535f;   /* burgundy — secondary accent */
+  --color-violet-pale: rgba(168, 83, 95, 0.12);
+  --wv-burgundy:       #a8535f;
+  --wv-indigo:         #2b4a8b;
+  --gradient-cosmic-b: linear-gradient(90deg, #1a2a52, #2b4a8b 55%, #4c6fc0);
+}
+[data-theme="light"] {
+  --color-blue:        #2b4a8b;
+  --color-blue-light:  #223d75;
+  --color-blue-pale:   #e9edf7;
+  --color-deep-violet: #7b2d3b;
+  --wv-burgundy:       #7b2d3b;
+}
+
+.nav-cta {
+  background: var(--gradient-cosmic-b) !important;
+  box-shadow: 0 2px 10px rgba(43, 74, 139, 0.35) !important;
+}
+
+/* ---- Brand lockup ---- */
+.brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
+.wv-mark {
+  width: 34px; height: 34px; border-radius: var(--radius-sm); flex-shrink: 0;
+  background: var(--gradient-cosmic-b);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; letter-spacing: 0.02em; color: #fff;
+  box-shadow: 0 2px 8px rgba(43, 74, 139, 0.3);
+}
+.wv-name { font-size: 14.5px; font-weight: 800; letter-spacing: -0.01em; color: var(--color-cloud-whisper); line-height: 1.15; }
+.wv-sub  { font-size: 8.5px; letter-spacing: 0.19em; text-transform: uppercase; color: var(--color-text-muted); margin-top: 2px; }
+
+/* ---- Source chips: one per connected system ---- */
+.src-chip {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  font-size: 8.5px; font-weight: 800; letter-spacing: 0.1em;
+  padding: 2px 8px; border-radius: 3px;
+}
+.src-chip .dot { width: 5px; height: 5px; border-radius: 99px; }
+.src-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+/* ---- Tie chip: proves a number flows from another page ---- */
+.tie {
+  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  font-size: 9px; font-weight: 800; letter-spacing: 0.06em;
+  color: var(--color-green); background: var(--color-green-bg);
+  border: 1px solid rgba(111,165,126,0.3); border-radius: 3px; padding: 2px 7px;
+  text-decoration: none;
+}
+.tie:hover { filter: brightness(1.15); }
+.tie::before { content: "="; font-weight: 900; opacity: .75; }
+
+/* ---- Derivation tooltip (hover any calculated cell) ---- */
+[data-exp] { cursor: help; border-bottom: 1px dotted var(--color-slate-hint); }
+#wv-tip {
+  position: fixed; z-index: 9000; max-width: 340px; pointer-events: none;
+  background: var(--color-bg-2); color: var(--color-cloud-whisper);
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg); padding: 10px 12px; font-size: 11.5px; line-height: 1.55;
+  opacity: 0; transition: opacity .12s ease;
+}
+#wv-tip.on { opacity: 1; }
+#wv-tip b { color: var(--color-blue-light); font-weight: 800; display: block; margin-bottom: 3px;
+  font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; }
+
+/* ---- Ethical wall notice ---- */
+.wall-note {
+  display: flex; align-items: flex-start; gap: 10px; margin-bottom: 18px;
+  background: var(--color-violet-pale); border: 1px solid rgba(168,83,95,0.3);
+  border-left: 3px solid var(--wv-burgundy); border-radius: var(--radius-md); padding: 12px 15px;
+  font-size: 12.5px; color: var(--color-text-muted);
+}
+.wall-note b { color: var(--color-cloud-whisper); }
+
+/* ---- Sign-in overlay ---- */
+.login-overlay {
+  position: fixed; inset: 0; z-index: 8000; overflow-y: auto;
+  background: var(--color-bg); display: flex; align-items: flex-start; justify-content: center; padding: 48px 20px;
+}
+.login-box { width: 100%; max-width: 880px; }
+.login-mark {
+  width: 46px; height: 46px; border-radius: var(--radius-md); background: var(--gradient-cosmic-b);
+  display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 16px; margin-bottom: 18px;
+}
+.login-title { font-size: 27px; font-weight: 800; letter-spacing: -0.02em; }
+.login-sub   { font-size: 13.5px; color: var(--color-text-muted); margin-top: 6px; }
+.login-note  { font-size: 12.5px; color: var(--color-slate-hint); margin: 20px 0 14px; }
+.login-grid  { display: grid; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: 10px; }
+.login-card {
+  display: grid; grid-template-columns: 34px 1fr; gap: 11px; align-items: center; text-align: left;
+  background: var(--color-bg-2); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  padding: 13px 14px; cursor: pointer; font: inherit; color: inherit;
+}
+.login-card:hover { border-color: var(--color-blue); background: var(--color-bg-3); }
+.login-card .avatar {
+  width: 34px; height: 34px; border-radius: var(--radius-full); background: var(--color-bg-3);
+  border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--color-blue-light);
+}
+.login-card .who b { display: block; font-size: 13px; font-weight: 700; }
+.login-card .who i { display: block; font-style: normal; font-size: 11px; color: var(--color-text-muted); margin-top: 1px; }
+.login-card .perm { grid-column: 2; font-size: 9.5px; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--color-slate-hint); margin-top: 4px; }
+.login-foot { margin-top: 22px; font-size: 11px; color: var(--color-slate-hint); line-height: 1.7; }
+
+/* ---- Brain FAB ---- */
+.brain-fab {
+  position: fixed; right: 22px; bottom: 22px; z-index: 700;
+  width: 54px; height: 54px; border-radius: var(--radius-full); border: 0; cursor: pointer;
+  background: var(--gradient-cosmic-b); box-shadow: 0 6px 22px rgba(0,0,0,.4);
+  display: flex; align-items: center; justify-content: center;
+}
+.brain-fab:hover { filter: brightness(1.1); }
+.brain-fab svg { width: 25px; height: 25px; }
+
+/* ---- Demo watermark ---- */
+.demo-watermark {
+  position: fixed; left: 12px; bottom: 10px; z-index: 600; pointer-events: none;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--color-slate-hint); opacity: .72;
+}
+
+/* ---- Waterfall bars (revenue leak) ---- */
+.wf { display: grid; gap: 7px; }
+.wf-row { display: grid; grid-template-columns: 158px 1fr 108px; gap: 12px; align-items: center; font-size: 12.5px; }
+.wf-row .wf-l { color: var(--color-text-muted); }
+.wf-track { height: 22px; background: var(--color-bg-3); border-radius: 4px; overflow: hidden; position: relative; }
+.wf-bar { height: 100%; background: var(--color-blue); opacity: .82; border-radius: 4px; }
+.wf-bar.leak { background: var(--wv-burgundy); }
+.wf-bar.net  { background: var(--color-green); }
+.wf-row .wf-v { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* ---- Heat grid (practice × metric) ---- */
+.heat td.h { font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
+.heat td.h[data-lv="5"] { background: rgba(111,165,126,.26); }
+.heat td.h[data-lv="4"] { background: rgba(111,165,126,.14); }
+.heat td.h[data-lv="3"] { background: transparent; }
+.heat td.h[data-lv="2"] { background: rgba(201,146,69,.16); }
+.heat td.h[data-lv="1"] { background: rgba(201,107,87,.20); }
+
+/* ---- Triage list ---- */
+.triage { display: grid; gap: 9px; }
+.tri {
+  display: grid; grid-template-columns: 4px 1fr auto; gap: 12px; align-items: center;
+  background: var(--color-bg-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 11px 14px;
+}
+.tri .sev { width: 4px; height: 100%; min-height: 30px; border-radius: 3px; background: var(--color-amber); }
+.tri.red .sev { background: var(--color-red); }
+.tri.green .sev { background: var(--color-green); }
+.tri .t { font-size: 13px; font-weight: 700; }
+.tri .d { font-size: 11.5px; color: var(--color-text-muted); margin-top: 2px; }
+.tri .a { font-size: 12px; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* ---- Print ---- */
+@media print {
+  .brain-fab, .nav-toggle, .news-marquee, .market-ticker, .demo-watermark, .login-overlay { display: none !important; }
+  .demo-panel { break-inside: avoid; }
+}

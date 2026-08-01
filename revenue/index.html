@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Revenue &amp; Realization · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801a">
+</head>
+<body>
+<div id="topbar"></div>
+
+<main class="page">
+<div class="demo-wrap" id="root"></div>
+</main>
+
+<script src="/law/vendor/chart.umd.min.js"></script>
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, declared before the first render() call */
+var rvDim = 'practice';
+var rvSearch = '';
+
+function rvSetDim(d) { rvDim = d; render(); }
+function rvSetSearch(v) { rvSearch = (v || '').toLowerCase(); render(); }
+
+function render() {
+  var M = window.MODEL, F = M.firm;
+  if (!currentPersona()) return;
+  if (!can('fin')) {
+    document.getElementById('root').innerHTML = hero('Revenue & realization', 'Restricted.',
+      'Your role does not include firm financial access. Speak to the COO if you need it.', ['e3e']);
+    return;
+  }
+
+  var mine = scopeMatters(M.matters);
+  var R = M.rollup(mine);
+  R.realization = R.collected / R.standardValue;
+  R.billingRealization = R.billed / R.standardValue;
+  R.collectionRealization = R.collected / R.billed;
+  R.effectiveRate = R.collected / R.hours;
+  R.standardRate = R.standardValue / R.hours;
+
+  /* ---------- KPIs ---------- */
+  var kpis = [
+    kpi('Collected — TTM', fmtK(R.collected), 'ties to the firm dashboard ' + tie('/law/', 'Dashboard'), '',
+      'Collected fees, trailing 12 months|The same figure the dashboard reports|Both read MODEL.firm.collected — one computation, two pages'),
+    kpi('Overall realization', fmtPct(R.realization * 100), 'collected ÷ standard value', 'green',
+      'Collected ÷ standard value|' + fmt$(R.collected) + ' ÷ ' + fmt$(R.standardValue)),
+    kpi('Billing realization', fmtPct(R.billingRealization * 100), 'billed ÷ standard', '',
+      'Billed ÷ standard value|Everything lost before the invoice went out'),
+    kpi('Collection realization', fmtPct(R.collectionRealization * 100), 'collected ÷ billed', '',
+      'Collected ÷ billed|Everything lost after the invoice went out'),
+    kpi('Standard rate', fmt$(R.standardRate), 'per billable hour', '',
+      'Standard value ÷ hours|' + fmt$(R.standardValue) + ' ÷ ' + fmtN(R.hours, 0) + ' hours'),
+    kpi('Effective rate', fmt$(R.effectiveRate), 'what an hour actually earns', 'amber',
+      'Collected ÷ hours|' + fmt$(R.collected) + ' ÷ ' + fmtN(R.hours, 0) + ' hours'),
+    kpi('Rate leakage', fmt$(R.standardRate - R.effectiveRate), 'per billed hour', 'amber',
+      'Standard rate − effective rate|Every billed hour loses this much between the timesheet and the bank|Across ' + fmtN(R.hours, 0) + ' hours that is ' + fmtK((R.standardRate - R.effectiveRate) * R.hours)),
+    kpi('One point of realization', fmtK(R.standardValue / 100), 'is worth this per year', '',
+      'Standard value ÷ 100|The single most useful number in a rate conversation'),
+  ];
+
+  /* ---------- leak waterfall, full detail ---------- */
+  var steps = [
+    ['Standard value', R.standardValue, 'run', 'Hours × standard rates'],
+    ['Less: discounts', R.discount, 'leak', 'Negotiated rates and client programmes'],
+    ['Less: write-downs', R.writeDown, 'leak', 'Time cut by the billing partner pre-bill'],
+    ['Billed', R.billed, 'run', 'Invoiced to clients'],
+    ['Less: collection shortfall', R.billed - R.collected, 'leak', 'Short-pays, rejections and negotiated reductions'],
+    ['Collected', R.collected, 'net', 'Cash received'],
+  ];
+  var wf = '<div class="wf">' + steps.map(function (s) {
+    return '<div class="wf-row"><div class="wf-l">' + s[0] + '</div>' +
+      '<div class="wf-track"><div class="wf-bar ' + (s[2] === 'leak' ? 'leak' : s[2] === 'net' ? 'net' : '') +
+      '" style="width:' + (s[1] / R.standardValue * 100).toFixed(1) + '%"></div></div>' +
+      '<div class="wf-v" data-exp="' + esc(s[0]) + '|' + esc(s[3]) + '|' + fmt$2(s[1]) + '|' + fmtPct(s[1] / R.standardValue * 100) + ' of standard value">' +
+      fmt$(s[1]) + '</div></div>';
+  }).join('') + '</div>';
+
+  /* ---------- dimension breakdown ---------- */
+  var dims = {
+    practice: { label: 'Practice group', map: M.byPractice, key: function (k) { return k; } },
+    office:   { label: 'Office',         map: M.byOffice,   key: function (k) { var o = M.offices.find(function (x) { return x.id === k; }); return o ? o.name : k; } },
+    fee:      { label: 'Fee arrangement',map: M.byFee,      key: function (k) { return k; } },
+  };
+  var d = dims[rvDim];
+  var rows = Object.keys(d.map).map(function (k) { return { name: d.key(k), r: d.map[k] }; })
+    .filter(function (x) { return !rvSearch || x.name.toLowerCase().indexOf(rvSearch) !== -1; })
+    .sort(function (a, b) { return b.r.collected - a.r.collected; });
+  var shownTotal = rows.reduce(function (s, x) { return s + x.r.collected; }, 0);
+
+  var tbl = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+    '<thead><tr><th>' + d.label + '</th><th class="r">Standard</th><th class="r">Discounts</th><th class="r">Write-downs</th>' +
+    '<th class="r">Billed</th><th class="r">Collected</th><th class="r">Realization</th><th class="r">Std rate</th><th class="r">Eff. rate</th><th class="r">Leak/hr</th></tr></thead><tbody>' +
+    rows.map(function (x) {
+      var r = x.r;
+      var sr = r.standardValue / r.hours, er = r.collected / r.hours;
+      return '<tr><td><b>' + esc(x.name) + '</b></td>' +
+        '<td class="r">' + fmtK(r.standardValue) + '</td>' +
+        '<td class="r" style="color:var(--wv-burgundy)">−' + fmtK(r.discount) + '</td>' +
+        '<td class="r" style="color:var(--wv-burgundy)">−' + fmtK(r.writeDown) + '</td>' +
+        '<td class="r">' + fmtK(r.billed) + '</td>' +
+        '<td class="r"><b>' + fmtK(r.collected) + '</b></td>' +
+        '<td class="r">' + fmtPct(r.realization * 100) + '</td>' +
+        '<td class="r">' + fmt$(sr) + '</td>' +
+        '<td class="r">' + fmt$(er) + '</td>' +
+        '<td class="r" style="color:var(--wv-burgundy)">' + fmt$(sr - er) + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td><b>Total — ' + rows.length + ' of ' + Object.keys(d.map).length + '</b></td>' +
+      '<td class="r"><b>' + fmtK(rows.reduce(function (s, x) { return s + x.r.standardValue; }, 0)) + '</b></td>' +
+      '<td class="r"><b>−' + fmtK(rows.reduce(function (s, x) { return s + x.r.discount; }, 0)) + '</b></td>' +
+      '<td class="r"><b>−' + fmtK(rows.reduce(function (s, x) { return s + x.r.writeDown; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(rows.reduce(function (s, x) { return s + x.r.billed; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(shownTotal) + '</b></td>' +
+      '<td class="r"><b>' + fmtPct(R.realization * 100) + '</b></td>' +
+      '<td class="r"><b>' + fmt$(R.standardRate) + '</b></td>' +
+      '<td class="r"><b>' + fmt$(R.effectiveRate) + '</b></td>' +
+      '<td class="r"><b>' + fmt$(R.standardRate - R.effectiveRate) + '</b></td></tr></tfoot></table></div>' +
+    (Math.abs(shownTotal - R.collected) < 0.5
+      ? '<div style="margin-top:12px"><span class="tie">Total ties to firm collected — ' + fmt$2(R.collected) + '</span></div>'
+      : '<div style="margin-top:12px;color:var(--color-amber);font-size:12px">Filtered view — ' + fmtK(shownTotal) + ' of ' + fmtK(R.collected) + '</div>');
+
+  var dimBtns = Object.keys(dims).map(function (k) {
+    return '<button class="pa-btn' + (k === rvDim ? ' on' : '') + '" onclick="rvSetDim(\'' + k + '\')" ' +
+      'style="font:inherit;font-size:11.5px;font-weight:700;padding:6px 13px;border-radius:var(--radius-sm);cursor:pointer;' +
+      'border:1px solid ' + (k === rvDim ? 'var(--color-blue)' : 'var(--color-border)') + ';' +
+      'background:' + (k === rvDim ? 'var(--color-blue-pale)' : 'var(--color-bg-3)') + ';' +
+      'color:' + (k === rvDim ? 'var(--color-blue)' : 'var(--color-cloud-whisper)') + '">' + dims[k].label + '</button>';
+  }).join(' ');
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('Revenue & realization — ' + M.asOfLabel,
+      'The firm produced <em>' + fmtK(R.standardValue) + '</em> and collected <em>' + fmtK(R.collected) + '</em>.',
+      'Most firms track billings. This page tracks the gap — where the work went between the timesheet and the bank, ' +
+      'with a reason code on every dollar of it.',
+      ['e3e', 'ebill', 'wv']) +
+    '<div class="demo-kpis" style="grid-template-columns:repeat(auto-fit,minmax(205px,1fr))">' + kpis.join('') + '</div>' +
+    panel('The leak, in order', srcChip('e3e') + ' · hover any figure for its derivation', wf, ' style="margin-bottom:18px"') +
+    panel('Breakdown', dimBtns +
+      ' <input type="search" class="demo-search" placeholder="Filter…" oninput="rvSetSearch(this.value)" value="' + esc(rvSearch) + '" style="min-width:150px;margin-left:8px">',
+      tbl, ' style="margin-bottom:18px"') +
+    panel('Realization trend — 24 months', srcChip('e3e'),
+      '<div class="demo-chart" style="height:260px"><canvas id="ch-realz"></canvas></div>');
+
+  drawRealz(M);
+}
+
+function drawRealz(M) {
+  var el = document.getElementById('ch-realz');
+  if (!el || typeof Chart === 'undefined') return;
+  var light = document.documentElement.getAttribute('data-theme') === 'light';
+  var text = light ? '#5b6472' : '#a2a2ac';
+  new Chart(el, {
+    type: 'line',
+    data: {
+      labels: M.series.map(function (s) { return s.label; }),
+      datasets: [{
+        label: 'Realization', tension: 0.32, borderWidth: 2, pointRadius: 0,
+        borderColor: light ? '#2b4a8b' : '#6d8fd8',
+        backgroundColor: light ? 'rgba(43,74,139,.10)' : 'rgba(109,143,216,.12)', fill: true,
+        data: M.series.map(function (s) { return s.collected / s.standard * 100; }),
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: function (c) { return fmtPct(c.parsed.y); } } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: text, font: { size: 10 } } },
+        y: { min: 80, max: 95, grid: { color: light ? 'rgba(27,34,48,.08)' : 'rgba(255,255,255,.07)' },
+             ticks: { color: text, font: { size: 10 }, callback: function (v) { return v + '%'; } } },
+      },
+    },
+  });
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

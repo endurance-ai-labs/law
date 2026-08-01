@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Client Book · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801a">
+</head>
+<body>
+<div id="topbar"></div>
+
+<main class="page">
+<div class="demo-wrap" id="root"></div>
+</main>
+
+<script src="/law/vendor/chart.umd.min.js"></script>
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() (TDZ trap) */
+var clSearch = '';
+var clIndustry = 'all';
+var clFilter = 'all';
+var clLimit = 60;
+
+function clSet(k, v) {
+  if (k === 'search') clSearch = (v || '').toLowerCase();
+  if (k === 'industry') clIndustry = v;
+  if (k === 'filter') clFilter = v;
+  clLimit = 60;
+  render();
+}
+function clMore() { clLimit += 120; render(); }
+
+function render() {
+  var M = window.MODEL, F = M.firm;
+  if (!currentPersona()) return;
+  var money = can('fin');
+  var margin = can('margin');
+
+  /* client-level figures are the roll-up of that client's matters, after walls */
+  var visible = scopeMatters(M.matters);
+  var byClient = M.rollupMap(visible, function (m) { return m.clientId; });
+  var book = M.clients.map(function (c) {
+    var r = byClient[c.id];
+    if (!r) return null;
+    return {
+      c: c, r: r,
+      rev: r.collected, prior: c._revPrior, delta: c._revPrior ? (r.collected - c._revPrior) / c._revPrior : 0,
+      practices: [...new Set(visible.filter(function (m) { return m.clientId === c.id; }).map(function (m) { return m.practice; }))],
+    };
+  }).filter(Boolean).sort(function (a, b) { return b.rev - a.rev; });
+
+  var bookTotal = book.reduce(function (s, x) { return s + x.rev; }, 0);
+
+  /* filters */
+  var rows = book.filter(function (x) {
+    if (clSearch && x.c.name.toLowerCase().indexOf(clSearch) === -1) return false;
+    if (clIndustry !== 'all' && x.c.industry !== clIndustry) return false;
+    if (clFilter === 'shrinking' && x.delta >= -0.05) return false;
+    if (clFilter === 'top25' && book.indexOf(x) >= 25) return false;
+    if (clFilter === 'ebill' && !x.c.ebillPortal) return false;
+    if (clFilter === 'single' && x.practices.length > 1) return false;
+    return true;
+  });
+  var shownTotal = rows.reduce(function (s, x) { return s + x.rev; }, 0);
+
+  var top25 = book.slice(0, 25);
+  var shrinking = top25.filter(function (x) { return x.delta < -0.05; });
+
+  /* ---------- KPIs ---------- */
+  var kpis = [];
+  if (money) {
+    kpis.push(kpi('Client revenue — TTM', fmtK(bookTotal), 'ties to the firm dashboard ' + tie('/law/', 'Dashboard'), '',
+      'Sum of collections across every client|Identical to the firm total because both roll up the same matters|' + fmt$2(bookTotal)));
+  }
+  kpis.push(kpi('Active clients', fmtN(book.length), fmtN(M.clients.length) + ' on file', ''));
+  if (money) {
+    kpis.push(kpi('Top-10 concentration', fmtPct(F.top10Share * 100), 'top 25 = ' + fmtPct(F.top25Share * 100),
+      F.top10Share > 0.3 ? 'amber' : '',
+      'Top 10 clients ÷ total revenue|' + fmtK(book.slice(0, 10).reduce(function (s, x) { return s + x.rev; }, 0)) + ' of ' + fmtK(bookTotal)));
+    kpis.push(kpi('Shrinking in the top 25', fmtN(shrinking.length), 'revenue below prior year', shrinking.length > 6 ? 'amber' : 'green',
+      'Clients whose TTM revenue is more than 5% below prior year|Total decline ' + fmtK(shrinking.reduce(function (s, x) { return s + (x.prior - x.rev); }, 0)) + '|3E collections × InterAction engagement recency'));
+    kpis.push(kpi('Largest client', fmtK(book[0].rev), esc(book[0].c.name), ''));
+  }
+  kpis.push(kpi('Single-practice clients', fmtN(book.filter(function (x) { return x.practices.length === 1; }).length),
+    'cross-sell white space ' + tie('/law/origination/', 'Cross-sell'), '',
+    'Clients using exactly one practice group|The cross-sell opportunity, quantified'));
+  kpis.push(kpi('Avg practices per client', fmtN(book.reduce(function (s, x) { return s + x.practices.length; }, 0) / book.length, 2),
+    'depth of relationship', ''));
+
+  /* ---------- table ---------- */
+  var page = rows.slice(0, clLimit);
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:640px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Client</th><th>Industry</th><th>Office</th>' +
+    (money ? '<th class="r">Revenue TTM</th><th class="r">Prior yr</th><th class="r">Δ</th>' : '') +
+    (margin ? '<th class="r">Margin</th>' : '') +
+    '<th class="r">Realization</th>' + (money ? '<th class="r">WIP</th><th class="r">AR</th><th class="r">Lockup</th>' : '') +
+    '<th class="r">Matters</th><th class="r">Practices</th><th>Portal</th><th class="r">Strength</th></tr></thead><tbody>' +
+    page.map(function (x) {
+      var c = x.c, r = x.r;
+      var off = M.offices.find(function (o) { return o.id === c.office; });
+      var dTone = x.delta < -0.05 ? 'var(--color-red)' : x.delta > 0.05 ? 'var(--color-green)' : 'var(--color-text-muted)';
+      return '<tr><td class="first-sticky"><b>' + esc(c.name) + '</b><div style="font-size:10.5px;color:var(--color-slate-hint)">client since ' + c.since + '</div></td>' +
+        '<td style="font-size:11.5px;color:var(--color-text-muted)">' + esc(c.industry) + '</td>' +
+        '<td>' + esc(off ? off.name : c.office) + '</td>' +
+        (money ? '<td class="r"><b>' + fmtK(x.rev) + '</b></td>' +
+                 '<td class="r" style="color:var(--color-text-muted)">' + fmtK(x.prior) + '</td>' +
+                 '<td class="r" style="color:' + dTone + '">' + (x.delta > 0 ? '▲' : x.delta < 0 ? '▼' : '') + ' ' + fmtPct(Math.abs(x.delta) * 100) + '</td>' : '') +
+        (margin ? '<td class="r">' + fmtPct(r.marginPct * 100) + '</td>' : '') +
+        '<td class="r">' + fmtPct(r.realization * 100) + '</td>' +
+        (money ? '<td class="r">' + fmtK(r.wip) + '</td><td class="r">' + fmtK(r.arTotal) + '</td>' +
+                 '<td class="r">' + fmtN(r.lockupDays, 0) + 'd</td>' : '') +
+        '<td class="r">' + fmtN(r.matters) + '</td>' +
+        '<td class="r">' + x.practices.length + '</td>' +
+        '<td style="font-size:11px">' + (c.ebillPortal ? esc(c.ebillPortal) : '<span style="color:var(--color-slate-hint)">—</span>') + '</td>' +
+        '<td class="r">' + c.strength + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rows.length) + ' of ' + fmtN(book.length) + ' clients</b></td><td></td><td></td>' +
+      (money ? '<td class="r"><b>' + fmtK(shownTotal) + '</b></td><td></td><td></td>' : '') +
+      (margin ? '<td></td>' : '') + '<td></td>' + (money ? '<td class="r"><b>' + fmtK(rows.reduce(function (s, x) { return s + x.r.wip; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(rows.reduce(function (s, x) { return s + x.r.arTotal; }, 0)) + '</b></td><td></td>' : '') +
+      '<td class="r"><b>' + fmtN(rows.reduce(function (s, x) { return s + x.r.matters; }, 0)) + '</b></td><td></td><td></td><td></td></tr></tfoot></table></div>' +
+    (rows.length > clLimit ? '<div style="text-align:center;margin-top:14px"><button onclick="clMore()" style="font:inherit;font-size:11.5px;font-weight:700;padding:9px 20px;border-radius:var(--radius-sm);cursor:pointer;border:1px solid var(--color-border);background:var(--color-bg-3);color:var(--color-cloud-whisper)">Show ' + Math.min(120, rows.length - clLimit) + ' more</button></div>' : '') +
+    (money && Math.abs(shownTotal - F.collected) < 0.5
+      ? '<div style="margin-top:12px"><span class="tie">Client book ties to firm collected — ' + fmt$2(F.collected) + '</span> <span class="tie">and to Revenue &amp; Realization</span></div>'
+      : money ? '<div style="margin-top:12px;font-size:12px;color:var(--color-text-muted)">Filtered view — ' + fmtK(shownTotal) + ' of ' + fmtK(bookTotal) + ' total client revenue</div>' : '');
+
+  var btn = function (k, v, label) {
+    var on = (k === 'filter' ? clFilter : clIndustry) === v;
+    return '<button onclick="clSet(\'' + k + '\',\'' + v + '\')" style="font:inherit;font-size:11.5px;font-weight:700;padding:6px 12px;border-radius:var(--radius-sm);cursor:pointer;' +
+      'border:1px solid ' + (on ? 'var(--color-blue)' : 'var(--color-border)') + ';background:' + (on ? 'var(--color-blue-pale)' : 'var(--color-bg-3)') +
+      ';color:' + (on ? 'var(--color-blue)' : 'var(--color-cloud-whisper)') + '">' + label + '</button>';
+  };
+  var industries = ['all'].concat([...new Set(M.clients.map(function (c) { return c.industry; }))].sort());
+  var controls =
+    btn('filter', 'all', 'All') + ' ' + btn('filter', 'top25', 'Top 25') + ' ' +
+    btn('filter', 'shrinking', 'Shrinking') + ' ' + btn('filter', 'ebill', 'E-billing') + ' ' +
+    btn('filter', 'single', 'Single-practice') +
+    ' <select onchange="clSet(\'industry\',this.value)" style="font:inherit;font-size:11.5px;font-weight:700;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--color-border);background:var(--color-bg-3);color:var(--color-cloud-whisper);margin-left:6px">' +
+      industries.map(function (i) { return '<option value="' + esc(i) + '"' + (i === clIndustry ? ' selected' : '') + '>' + (i === 'all' ? 'All industries' : esc(i)) + '</option>'; }).join('') +
+    '</select>' +
+    ' <input type="search" class="demo-search" placeholder="Search clients…" oninput="clSet(\'search\',this.value)" value="' + esc(clSearch) + '" style="min-width:170px;margin-left:6px">';
+
+  /* shrinking-client callout — the demo's "which top clients are quietly leaving" beat */
+  var shrinkPanel = money && shrinking.length ? panel(
+    'Top-25 clients below prior year',
+    srcChip('e3e') + ' ' + srcChip('crm'),
+    '<div class="triage">' + shrinking.slice(0, 8).map(function (x) {
+      return '<div class="tri red"><span class="sev"></span><div>' +
+        '<div class="t">' + esc(x.c.name) + '</div>' +
+        '<div class="d">' + fmtK(x.prior) + ' → ' + fmtK(x.rev) + ' · ' + x.practices.length + ' practice' + (x.practices.length > 1 ? 's' : '') +
+        ' · relationship strength ' + x.c.strength + '/100 · ' + esc(x.c.industry) + '</div></div>' +
+        '<div class="a" style="color:var(--color-red)">▼ ' + fmtPct(Math.abs(x.delta) * 100) + '</div></div>';
+    }).join('') + '</div>' +
+    '<div style="margin-top:13px;padding-top:12px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted)">' +
+      'Combined decline <b style="color:var(--wv-burgundy)">' + fmtK(shrinking.reduce(function (s, x) { return s + (x.prior - x.rev); }, 0)) + '</b>. ' +
+      'No single partner sees this — each of these clients belongs to a different relationship partner, and the pattern only exists at firm level.' +
+    '</div>', ' style="margin-bottom:18px"') : '';
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('Client book — ' + M.asOfLabel,
+      fmtN(book.length) + ' clients. <em>One relationship picture.</em>',
+      'Revenue, margin, lockup, cross-sell depth and relationship strength for every client, ' +
+      'joined from the ledger, the CRM and email metadata. Sorted by revenue.',
+      ['e3e', 'crm', 'graph', 'wv']) +
+    '<div class="demo-kpis" style="grid-template-columns:repeat(auto-fit,minmax(205px,1fr))">' + kpis.join('') + '</div>' +
+    shrinkPanel +
+    panel('Client register', controls, tbl);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

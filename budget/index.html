@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Budget vs Actual · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801a">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js"></script>
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() */
+var bgMonth = 11;   // index into seriesTTM, default = latest
+
+function bgSet(v) { bgMonth = parseInt(v, 10); render(); }
+
+function render() {
+  var M = window.MODEL, F = M.firm, B = M.budget, P = M.pnl;
+  if (!currentPersona()) return;
+  if (!can('fin')) {
+    document.getElementById('root').innerHTML = hero('Budget vs actual', 'Restricted.', 'Budget data requires financial access.', ['e3e']);
+    return;
+  }
+
+  var mo = M.seriesTTM[bgMonth];
+  var prev = M.seriesTTM[Math.max(0, bgMonth - 1)];
+  var moShare = mo.collected / F.collected;
+
+  var kpis = [
+    kpi('Revenue — TTM actual', fmtK(F.collected), 'ties to the P&L ' + tie('/law/financials/', 'P&L'), ''),
+    kpi('Revenue budget', fmtK(B.revBudget), 'prior year + 7.2%', ''),
+    kpi('Revenue variance', (B.revVariance >= 0 ? '+' : '') + fmtK(B.revVariance),
+      fmtPct(Math.abs(B.revVariance / B.revBudget) * 100) + (B.revVariance >= 0 ? ' ahead' : ' behind'),
+      B.revVariance >= 0 ? 'green' : 'amber',
+      'Actual − budget|' + fmt$(F.collected) + ' − ' + fmt$(B.revBudget) + '|Budget basis: prior-year actual uplifted 7.2%'),
+    kpi('Expense budget', fmtK(B.expBudget), 'across ' + (B.lines.length - 1) + ' lines', ''),
+    kpi('Expense actual', fmtK(B.expActual), fmtPct(B.expActual / F.collected * 100) + ' of revenue',
+      B.expActual <= B.expBudget ? 'green' : 'amber'),
+    kpi('Expense variance', (B.expBudget - B.expActual >= 0 ? '+' : '') + fmtK(B.expBudget - B.expActual),
+      B.expBudget >= B.expActual ? 'under budget' : 'over budget',
+      B.expBudget >= B.expActual ? 'green' : 'amber'),
+    kpi('Net income vs budget', (P.netIncome - B.niBudget >= 0 ? '+' : '') + fmtK(P.netIncome - B.niBudget),
+      'budget ' + fmtK(B.niBudget), P.netIncome >= B.niBudget ? 'green' : 'amber'),
+    kpi('Selected month', mo.label, fmtK(mo.collected) + ' collected', ''),
+  ];
+
+  /* month selector */
+  var sel = '<select onchange="bgSet(this.value)" style="font:inherit;font-size:11.5px;font-weight:700;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--color-border);background:var(--color-bg-3);color:var(--color-cloud-whisper)">' +
+    M.seriesTTM.map(function (s, i) { return '<option value="' + i + '"' + (i === bgMonth ? ' selected' : '') + '>' + s.label + '</option>'; }).join('') + '</select>';
+
+  /* budget vs actual with variance drivers underneath every line */
+  var rows = B.lines.map(function (l) {
+    var actual = l.rev ? mo.collected : l.actual * moShare;
+    var budget = l.budget * (l.rev ? mo.collected / F.collected * (F.collected / B.revBudget) * (B.revBudget / F.collected) : moShare);
+    budget = l.budget * moShare;
+    var variance = l.rev ? actual - budget : budget - actual;
+    var favourable = variance >= 0;
+    return '<tr><td class="first-sticky"><b>' + esc(l.k) + '</b>' + drivers(l, actual, prev, moShare) + '</td>' +
+      '<td class="r">' + fmt$(actual) + '</td>' +
+      '<td class="r" style="color:var(--color-text-muted)">' + fmt$(budget) + '</td>' +
+      '<td class="r" style="color:' + (favourable ? 'var(--color-green)' : 'var(--color-red)') + '">' +
+        (favourable ? '▲ ' : '▼ ') + fmt$(Math.abs(variance)) + '</td>' +
+      '<td class="r" style="color:' + (favourable ? 'var(--color-green)' : 'var(--color-red)') + '">' +
+        fmtPct(Math.abs(variance / budget) * 100) + '</td>' +
+      '<td class="r">' + (Math.abs(variance / budget) > 0.05 ? pill(favourable ? 'FAVOURABLE' : 'REVIEW', favourable ? 'green' : 'red') : '') + '</td></tr>';
+  }).join('');
+
+  var avbTbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:640px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Line</th><th class="r">Actual</th><th class="r">Budget</th><th class="r">Variance</th><th class="r">%</th><th class="r">Flag</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody>' +
+    '<tfoot><tr class="totals-row"><td class="first-sticky"><b>Net income — ' + mo.label + '</b></td>' +
+      '<td class="r"><b>' + fmt$(mo.margin) + '</b></td>' +
+      '<td class="r">' + fmt$(B.niBudget * moShare) + '</td>' +
+      '<td class="r" style="color:' + (mo.margin >= B.niBudget * moShare ? 'var(--color-green)' : 'var(--color-red)') + '"><b>' +
+        (mo.margin >= B.niBudget * moShare ? '▲ ' : '▼ ') + fmt$(Math.abs(mo.margin - B.niBudget * moShare)) + '</b></td>' +
+      '<td class="r"></td><td class="r"></td></tr></tfoot></table></div>' +
+    '<div style="margin-top:12px"><span class="tie">Annualised revenue ties to the P&amp;L — ' + fmt$2(F.collected) + '</span></div>';
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('Budget vs actual — ' + M.asOfLabel,
+      'The variance, <em>and why</em>.',
+      'Every line prints its drivers underneath it, so the monthly review starts at the explanation instead of at the number. ' +
+      'No tab-hopping to find out what moved.',
+      ['e3e', 'adp', 'wv']) +
+    '<div class="demo-kpis" style="grid-template-columns:repeat(auto-fit,minmax(205px,1fr))">' + kpis.join('') + '</div>' +
+    panel('Actual vs budget — ' + mo.label, sel + ' <span class="k" style="margin-left:10px">drivers printed under every line</span>',
+      avbTbl, ' style="margin-bottom:18px"') +
+    panel('Revenue against budget — trailing twelve months', srcChip('e3e'),
+      '<div class="demo-chart" style="height:280px"><canvas id="ch-bud"></canvas></div>');
+
+  var el = document.getElementById('ch-bud');
+  if (el && typeof Chart !== 'undefined') {
+    var light = document.documentElement.getAttribute('data-theme') === 'light';
+    var text = light ? '#5b6472' : '#a2a2ac';
+    var monthlyBudget = B.revBudget / 12;
+    new Chart(el, {
+      type: 'bar',
+      data: { labels: M.seriesTTM.map(function (s) { return s.label; }),
+        datasets: [
+          { label: 'Actual', data: M.seriesTTM.map(function (s) { return s.collected; }),
+            backgroundColor: M.seriesTTM.map(function (s) { return s.collected >= monthlyBudget ? (light ? '#4f7d5d' : '#6FA57E') : (light ? '#b1503f' : '#C96B57'); }), borderWidth: 0, order: 2 },
+          { label: 'Budget', type: 'line', data: M.seriesTTM.map(function () { return monthlyBudget; }),
+            borderColor: light ? '#2b4a8b' : '#6d8fd8', borderWidth: 2, borderDash: [6, 4], pointRadius: 0, order: 1 },
+        ] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: text, boxWidth: 10, font: { size: 11 } } },
+          tooltip: { callbacks: { label: function (c) { return c.dataset.label + ': ' + fmt$(c.parsed.y); } } } },
+        scales: { x: { grid: { display: false }, ticks: { color: text, font: { size: 10 } } },
+          y: { grid: { color: light ? 'rgba(27,34,48,.08)' : 'rgba(255,255,255,.07)' },
+               ticks: { color: text, font: { size: 10 }, callback: function (v) { return fmtK(v); } } } } },
+    });
+  }
+}
+
+/* deterministic sub-item composition — ties exactly to the line total */
+function drivers(l, actual, prev, moShare) {
+  var M = window.MODEL;
+  var parts;
+  if (l.rev) {
+    var top = M.clientsRanked.slice(0, 4);
+    var topSum = top.reduce(function (s, c) { return s + c._rev; }, 0);
+    parts = top.map(function (c) { return [c.name, c._rev * moShare]; });
+    parts.push(['All other clients', actual - topSum * moShare]);
+  } else if (/Partner compensation/.test(l.k)) {
+    parts = [['Fixed draws', actual * 0.62], ['Points distribution', actual * 0.27], ['Retirement accrual', actual * 0.11]];
+  } else if (/Associate/.test(l.k)) {
+    parts = [['Base salary', actual * 0.78], ['Bonus accrual', actual * 0.15], ['Benefits and tax', actual * 0.07]];
+  } else if (/Occupancy/.test(l.k)) {
+    parts = [['New York', actual * 0.41], ['Chicago', actual * 0.16], ['San Francisco', actual * 0.18], ['Dallas, Miami, London', actual * 0.25]];
+  } else if (/Technology/.test(l.k)) {
+    parts = [['Practice management and DMS licences', actual * 0.38], ['Infrastructure and cloud', actual * 0.27],
+             ['Security and endpoint', actual * 0.19], ['Support and helpdesk', actual * 0.16]];
+  } else if (/Library/.test(l.k)) {
+    parts = [['Westlaw and Practical Law', actual * 0.46], ['LexisNexis', actual * 0.31], ['Sector databases', actual * 0.23]];
+  } else if (/Business services/.test(l.k)) {
+    parts = [['Finance and billing', actual * 0.29], ['IT', actual * 0.24], ['Marketing and BD', actual * 0.18],
+             ['Secretarial and admin', actual * 0.29]];
+  } else {
+    return '';
+  }
+  var priorFactor = prev ? (prev.collected / (window.MODEL.seriesTTM[bgMonth].collected || 1)) : 1;
+  return '<div class="avb-drv" style="margin-top:5px;display:grid;gap:2px">' + parts.map(function (p) {
+    var priorVal = p[1] * priorFactor * (0.94 + ((p[0].length % 13) / 100));
+    var up = p[1] >= priorVal;
+    return '<div style="font-size:10.5px;color:var(--color-slate-hint)">' +
+      esc(p[0]) + ' (' + fmt$(p[1]) + ' vs. ' + fmt$(priorVal) + ' in ' + esc(prev ? prev.label : '—') + ', ' +
+      '<span style="color:' + (up ? 'var(--color-green)' : 'var(--color-red)') + '">' + (up ? '▲' : '▼') + ' ' +
+      fmtPct(Math.abs(p[1] / priorVal - 1) * 100) + '</span>)</div>';
+  }).join('') + '</div>';
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>
