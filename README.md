@@ -8,6 +8,8 @@ Law-firm instance of the Brain Powered Operating System. Third build on the **CF
 
 ## Access
 
+**Live: https://endurancelabs.ai/law** · backed by https://endurance-ai-labs.github.io/law/
+
 Public landing at **`/welcome/`**. Signed-out visitors hitting `/` are redirected there; the landing's "Enter the portal" links carry `?enter=1`, which shows the password gate instead.
 
 **Password: `enduranceportal`** (SHA-256 hash in `js/util.js`; change it by replacing `GATE_HASH`). Then pick a role from the org chart.
@@ -24,9 +26,13 @@ Public landing at **`/welcome/`**. Signed-out visitors hitting `/` are redirecte
 | 2 | `/financials/` `/lockup/` `/rates/` `/budget/` | ✅ |
 | — | `/billing/` + `/profitability/` (demo beats 5a, 5b, pulled forward) | ✅ |
 | 9 | `/welcome/` landing + password gate | ✅ |
-| 3–8 | Remaining 26 pages | pending — see `docs/OUTLINE.md` §6 |
+| 3 | `/matters/` + `/afa/` | ✅ |
+| — | `404.html` catch-all so unbuilt modules explain themselves | ✅ |
+| 3–8 | Remaining 24 pages | pending — see `build-spec/OUTLINE.md` §6 |
 
-**Live pages (10):** `/` · `/welcome/` · `/revenue/` · `/clients/` · `/financials/` · `/lockup/` · `/rates/` · `/budget/` · `/billing/` · `/profitability/`
+**Live pages (12):** `/` · `/welcome/` · `/revenue/` · `/clients/` · `/matters/` · `/afa/` · `/financials/` · `/lockup/` · `/rates/` · `/budget/` · `/billing/` · `/profitability/`
+
+Every other nav route resolves to `404.html`, which names the module, what it will hold and which phase it lands in — nothing dead-ends.
 
 ### Gate result
 
