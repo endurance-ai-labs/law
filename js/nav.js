@@ -77,6 +77,7 @@ const NAV_GROUPS = [
       { href: '/law/it/',          label: 'Systems Health' },
     ],
   },
+  { id: 'explore', label: 'Explore', href: '/law/explore/', items: [] },
   { id: 'integ', label: 'Integrations', href: '/law/integrations/', items: [] },
   { id: 'brain', label: 'Brain', href: '/law/brain/', items: [], cta: true },
 ];
@@ -89,6 +90,7 @@ const _GROUP_OF = {
   '/law/pipeline/': 'grow', '/law/origination/': 'grow', '/law/marketing/': 'grow',
   '/law/intake/': 'risk', '/law/conflicts/': 'risk', '/law/walls/': 'risk', '/law/trust/': 'risk', '/law/ocg/': 'risk', '/law/insurance/': 'risk',
   '/law/billing/': 'ops', '/law/collections/': 'ops', '/law/vendors/': 'ops', '/law/it/': 'ops',
+  '/law/explore/': 'explore',
   '/law/integrations/': 'integ', '/law/brain/': 'brain',
 };
 

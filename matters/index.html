@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Matter Register · Whitmore Vance LLP</title>
-<link rel="stylesheet" href="/law/css/theme.css?v=20260801b">
-<link rel="stylesheet" href="/law/css/endurance.css?v=20260801b">
-<link rel="stylesheet" href="/law/css/demo.css?v=20260801b">
-<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801c">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801c">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801c">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801c">
 </head>
 <body>
 <div id="topbar"></div>
@@ -16,11 +16,15 @@
 <script src="/law/vendor/chart.umd.min.js"></script>
 <script src="/law/js/data.js"></script>
 <script src="/law/js/util.js"></script>
+<script src="/law/js/analytics.js"></script>
 <script src="/law/js/nav.js"></script>
 <script>
 renderTopbar();
 
-/* filter state — var, before the first render() (TDZ trap) */
+/* filter state — var, before the first render() (TDZ trap).
+   Population filters now come from the shared analytics layer (FILTERS);
+   only sort and paging are local to this page. */
+(function(){ FILTERS = filtersFromURL(); })();
 var mtSearch = '';
 var mtPractice = 'all';
 var mtOffice = 'all';
@@ -31,12 +35,6 @@ var mtSort = 'revenue';
 var mtLimit = 60;
 
 function mtSet(k, v) {
-  if (k === 'search') mtSearch = (v || '').toLowerCase();
-  if (k === 'practice') mtPractice = v;
-  if (k === 'office') mtOffice = v;
-  if (k === 'fee') mtFee = v;
-  if (k === 'status') mtStatus = v;
-  if (k === 'flag') mtFlag = v;
   if (k === 'sort') mtSort = v;
   mtLimit = 60; render();
 }
@@ -50,22 +48,7 @@ function render() {
 
   var all = scopeMatters(M.matters);
 
-  var rows = all.filter(function (m) {
-    if (mtStatus === 'open' && !m.active) return false;
-    if (mtStatus === 'closed' && m.active) return false;
-    if (mtPractice !== 'all' && m.practice !== mtPractice) return false;
-    if (mtOffice !== 'all' && m.office !== mtOffice) return false;
-    if (mtFee !== 'all' && m.feeLabel !== mtFee) return false;
-    if (mtFlag === 'overbudget' && !m.overBudget) return false;
-    if (mtFlag === 'loss' && !(m.active && m.margin < 0)) return false;
-    if (mtFlag === 'wip' && !(m.active && m.wip > 60000)) return false;
-    if (mtFlag === 'ebill' && !m.ebill) return false;
-    if (mtSearch) {
-      var hay = (m.name + ' ' + m.clientName + ' ' + m.id + ' ' + m.partnerName).toLowerCase();
-      if (hay.indexOf(mtSearch) === -1) return false;
-    }
-    return true;
-  });
+  var rows = applyFilters(all);
 
   var sorters = {
     revenue: function (a, b) { return b.collected - a.collected; },
@@ -104,24 +87,12 @@ function render() {
   kpis.push(kpi('Non-hourly work', fmtPct(all.filter(function (m) { return m.fee !== 'hourly'; }).length / all.length * 100),
     'of matters' + '<div class="kpi-foot">' + tie('/law/afa/', 'Fee Arrangements') + '</div>', ''));
 
-  /* ---------- controls ---------- */
-  var sel = function (key, label, opts, cur) {
-    return '<select onchange="mtSet(\'' + key + '\',this.value)" title="' + label + '" ' +
-      'style="font:inherit;font-size:11.5px;font-weight:700;padding:6px 10px;border-radius:var(--radius-sm);' +
-      'border:1px solid ' + (cur !== 'all' && cur !== 'open' && cur !== 'revenue' ? 'var(--color-blue)' : 'var(--color-border)') + ';' +
-      'background:var(--color-bg-3);color:var(--color-cloud-whisper)">' +
-      opts.map(function (o) {
-        return '<option value="' + esc(o[0]) + '"' + (o[0] === cur ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
-      }).join('') + '</select>';
-  };
-  var controls =
-    sel('status', 'Status', [['open', 'Open matters'], ['closed', 'Closed'], ['all', 'All statuses']], mtStatus) + ' ' +
-    sel('practice', 'Practice', [['all', 'All practices']].concat(M.practices.map(function (p) { return [p.name, p.name]; })), mtPractice) + ' ' +
-    sel('office', 'Office', [['all', 'All offices']].concat(M.offices.map(function (o) { return [o.id, o.name]; })), mtOffice) + ' ' +
-    sel('fee', 'Fee type', [['all', 'All fee types']].concat([...new Set(M.matters.map(function (m) { return m.feeLabel; }))].map(function (f) { return [f, f]; })), mtFee) + ' ' +
-    sel('flag', 'Flag', [['all', 'No flag filter'], ['overbudget', 'Over budget'], ['loss', 'Loss-making'], ['wip', 'WIP over $60K'], ['ebill', 'E-billed']], mtFlag) + ' ' +
-    sel('sort', 'Sort', [['revenue', 'Sort: revenue'], ['margin', 'Sort: worst margin'], ['wip', 'Sort: WIP'], ['hours', 'Sort: hours'], ['opened', 'Sort: newest']], mtSort) +
-    ' <input type="search" class="demo-search" placeholder="Search matters, clients, partners…" oninput="mtSet(\'search\',this.value)" value="' + esc(mtSearch) + '" style="min-width:230px;margin-left:6px">';
+  /* ---------- controls: shared filter bar + local sort ---------- */
+  var sortSel = '<select class="flt' + (mtSort !== 'revenue' ? ' on' : '') + '" onchange="mtSet(\'sort\',this.value)">' +
+    [['revenue', 'Sort: revenue'], ['margin', 'Sort: worst margin'], ['wip', 'Sort: WIP'],
+     ['hours', 'Sort: hours'], ['opened', 'Sort: newest']]
+      .map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === mtSort ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+    '</select>';
 
   /* ---------- register ---------- */
   var page = rows.slice(0, mtLimit);
@@ -183,7 +154,8 @@ function render() {
       ['e3e', 'iman', 'adp', 'wv']) +
     '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
     secHead('Register', fmtN(rows.length) + ' of ' + fmtN(all.length) + ' shown') +
-    panel('All matters', controls, tbl);
+    renderFilterBar(all) +
+    panel('All matters', sortSel, tbl);
 }
 
 if (isSignedIn()) render();

@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exhibit Builder · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801c">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801c">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801c">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801c">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js"></script>
+<script src="/law/vendor/xlsx.full.min.js"></script>
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/analytics.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+/* exhibit state — var, before any render() call (TDZ trap) */
+var exRow = 'practice';
+var exSplit = '';
+var exMetrics = ['collected', 'realization', 'marginPct', 'effRate', 'lockupDays', 'matters'];
+var exSort = '';
+var exDir = 'desc';
+var exChart = 'collected';
+
+(function initFromURL() {
+  FILTERS = filtersFromURL();
+  var p = new URLSearchParams(window.location.search);
+  if (p.get('row') && DIMS[p.get('row')]) exRow = p.get('row');
+  if (p.get('split') && DIMS[p.get('split')]) exSplit = p.get('split');
+  if (p.get('m')) {
+    var ids = p.get('m').split(',').filter(function (id) { return METRICS[id]; });
+    if (ids.length) exMetrics = ids;
+  }
+  if (p.get('sort')) exSort = p.get('sort');
+  if (p.get('dir')) exDir = p.get('dir');
+})();
+
+function exSyncURL() {
+  syncURL({ row: exRow, split: exSplit, m: exMetrics.join(','), sort: exSort, dir: exDir });
+}
+function exSet(k, v) {
+  if (k === 'row') { exRow = v; if (exSplit === v) exSplit = ''; }
+  if (k === 'split') exSplit = v === 'none' ? '' : v;
+  if (k === 'sort') { if (exSort === v) exDir = exDir === 'desc' ? 'asc' : 'desc'; else { exSort = v; exDir = 'desc'; } }
+  exSyncURL(); render();
+}
+function exToggleMetric(id) {
+  var i = exMetrics.indexOf(id);
+  if (i === -1) exMetrics.push(id);
+  else if (exMetrics.length > 1) exMetrics.splice(i, 1);
+  exSyncURL(); render();
+}
+function exPreset(name) {
+  var P = {
+    economics: ['collected', 'realization', 'marginPct', 'effRate'],
+    leak:      ['standardValue', 'discount', 'writeDown', 'collected', 'realization', 'rateLeak'],
+    cash:      ['collected', 'wip', 'ar', 'ar90', 'lockupDays'],
+    effort:    ['hours', 'partnerHours', 'leverageR', 'hoursPerMatter', 'effRate'],
+    risk:      ['matters', 'overBudget', 'lossMatters', 'ebillShare', 'marginPct'],
+    full:      ['collected', 'billed', 'realization', 'margin', 'marginPct', 'effRate', 'costPerHour', 'hours', 'leverageR', 'wip', 'ar', 'lockupDays', 'matters'],
+  };
+  exMetrics = (P[name] || P.economics).filter(metricAvailable);
+  if (!exMetrics.length) exMetrics = ['matters'];
+  exSyncURL(); render();
+}
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+
+  var base = scopeMatters(M.matters);
+  var list = applyFilters(base);
+  var mets = exMetrics.filter(metricAvailable);
+  if (!mets.length) mets = ['matters'];
+
+  var scen = scenarioCount(base);
+  var pivot = list.length ? buildPivot(list, exRow, exSplit || null, mets, exSort, exDir) : null;
+
+  /* ---------- scenario counter ---------- */
+  var scenPanel = '<div class="scen">' +
+    '<div class="s"><div class="l">Slice dimensions</div><div class="v">' + scen.dims + '</div>' +
+      '<div class="d">Any of them can be the row, the split, or a filter.</div></div>' +
+    '<div class="s"><div class="l">Metrics available</div><div class="v">' + scen.metrics + '</div>' +
+      '<div class="d">Layer as many onto one exhibit as you like.</div></div>' +
+    '<div class="s"><div class="l">Filter combinations</div><div class="v">' + fmtBig(scen.filters) + '</div>' +
+      '<div class="d">Distinct filtered populations reachable from this bar.</div></div>' +
+    '<div class="s"><div class="l">Distinct exhibits</div><div class="v">' + fmtBig(scen.pivots) + '</div>' +
+      '<div class="d">Row × split × any subset of metrics — before filters.</div></div>' +
+  '</div>';
+
+  /* ---------- metric picker, grouped ---------- */
+  var groups = {};
+  Object.keys(METRICS).forEach(function (id) {
+    var m = METRICS[id];
+    (groups[m.group] = groups[m.group] || []).push(id);
+  });
+  var picker = '<div class="met-groups">' + Object.keys(groups).map(function (g) {
+    return '<div class="met-g"><h4>' + esc(g) + '</h4>' + groups[g].map(function (id) {
+      var avail = metricAvailable(id);
+      var on = mets.indexOf(id) !== -1;
+      return '<label class="met-opt' + (avail ? '' : ' off') + '"' + (avail ? '' : ' title="Your role does not include this metric"') + '>' +
+        '<input type="checkbox"' + (on ? ' checked' : '') + (avail ? '' : ' disabled') +
+        ' onchange="exToggleMetric(\'' + id + '\')"><span>' + esc(METRICS[id].label) + '</span></label>';
+    }).join('') + '</div>';
+  }).join('') + '</div>' +
+  '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--color-border);display:flex;flex-wrap:wrap;gap:7px;align-items:center">' +
+    '<span style="font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--color-slate-hint);margin-right:4px">Presets</span>' +
+    [['economics', 'Economics'], ['leak', 'Revenue leak'], ['cash', 'Cash & lockup'], ['effort', 'Effort & leverage'], ['risk', 'Risk'], ['full', 'Everything']]
+      .map(function (p) { return '<button class="fchip link" onclick="exPreset(\'' + p[0] + '\')">' + p[1] + '</button>'; }).join('') +
+    '<span class="flt-count">' + mets.length + ' metric' + (mets.length > 1 ? 's' : '') + ' layered</span>' +
+  '</div>';
+
+  /* ---------- axis controls ---------- */
+  var dimSel = function (key, cur, allowNone) {
+    return '<select class="flt' + (cur ? ' on' : '') + '" onchange="exSet(\'' + key + '\',this.value)">' +
+      (allowNone ? '<option value="none"' + (!cur ? ' selected' : '') + '>No split</option>' : '') +
+      Object.keys(DIMS).map(function (d) {
+        return '<option value="' + d + '"' + (d === cur ? ' selected' : '') + '>' + esc(DIMS[d].label) + '</option>';
+      }).join('') + '</select>';
+  };
+  var axis =
+    '<div class="flt-row" style="align-items:center">' +
+      '<span style="font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--color-slate-hint)">Rows</span>' +
+      dimSel('row', exRow, false) +
+      '<span style="font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--color-slate-hint);margin-left:8px">Split by</span>' +
+      dimSel('split', exSplit, true) +
+      (exSplit && mets.length > 3
+        ? '<span style="font-size:11px;color:var(--color-amber);margin-left:8px">Splitting with ' + mets.length + ' metrics makes a wide table — it scrolls inside the panel.</span>'
+        : '') +
+    '</div>';
+
+  /* ---------- the pivot ---------- */
+  var table = '';
+  if (!pivot || !pivot.rows.length) {
+    table = '<div style="padding:26px 4px;text-align:center;color:var(--color-text-muted);font-size:13px">' +
+      'No matters match this filter set. <button class="fchip clear" onclick="clearFilters()" style="margin-left:8px">Clear all filters</button></div>';
+  } else {
+    var head1 = '<tr><th class="first-sticky" rowspan="' + (exSplit ? 2 : 1) + '">' + esc(DIMS[exRow].label) + '</th>';
+    if (exSplit) {
+      pivot.splitVals.forEach(function (sv) {
+        head1 += '<th class="r split" colspan="' + mets.length + '">' + esc(sv) + '</th>';
+      });
+      head1 += '</tr><tr>';
+      pivot.splitVals.forEach(function () {
+        mets.forEach(function (id, i) {
+          head1 += '<th class="r' + (i === 0 ? ' split' : '') + '">' + esc(METRICS[id].label) + '</th>';
+        });
+      });
+      head1 += '</tr>';
+    } else {
+      mets.forEach(function (id) {
+        var active = (exSort || mets[0]) === id;
+        head1 += '<th class="r" style="cursor:pointer;' + (active ? 'color:var(--color-blue)' : '') +
+          '" onclick="exSet(\'sort\',\'' + id + '\')">' + esc(METRICS[id].label) +
+          (active ? (exDir === 'desc' ? ' ▼' : ' ▲') : '') + '</th>';
+      });
+      head1 += '</tr>';
+    }
+
+    var body = pivot.rows.map(function (r) {
+      var tds = '<td class="first-sticky"><b>' + esc(r.key) + '</b>' +
+        '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + fmtN(r.items.length) + ' matters</div></td>';
+      r.cells.forEach(function (c, i) {
+        var first = exSplit && (i % mets.length === 0);
+        tds += '<td class="r' + (first ? ' splitstart' : '') + '">' +
+          (c.n === 0 ? '<span style="color:var(--color-slate-hint)">—</span>' : metricFmt(c.metric, c.value)) + '</td>';
+      });
+      return '<tr>' + tds + '</tr>';
+    }).join('');
+
+    var foot = '<tr class="totals-row"><td class="first-sticky"><b>Total — ' + fmtN(pivot.rows.length) + ' rows</b></td>' +
+      pivot.totals.map(function (c, i) {
+        var first = exSplit && (i % mets.length === 0);
+        return '<td class="r' + (first ? ' splitstart' : '') + '"><b>' + metricFmt(c.metric, c.value) + '</b></td>';
+      }).join('') + '</tr>';
+
+    table = '<div class="demo-tbl-wrap grid-scroll" style="max-height:620px"><table class="demo-tbl pivot">' +
+      '<thead>' + head1 + '</thead><tbody>' + body + '</tbody><tfoot>' + foot + '</tfoot></table></div>' +
+      '<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
+        '<button class="fchip link" onclick="exExport()">Export to Excel</button>' +
+        '<button class="fchip link" onclick="window.print()">Print</button>' +
+        '<button class="fchip link" onclick="copyExhibitLink(this)">Copy link to this exhibit</button>' +
+        '<span class="flt-count">' + fmtN(list.length) + ' matters · ' + fmtN(pivot.rows.length) + ' rows · ' +
+        (exSplit ? pivot.splitVals.length + ' splits × ' : '') + mets.length + ' metrics</span>' +
+      '</div>';
+  }
+
+  /* ---------- chart of the leading metric ---------- */
+  var chartPanel = '';
+  if (pivot && pivot.rows.length) {
+    chartPanel = panel('Ranked by ' + METRICS[mets[0]].label, srcChip('wv') + ' · top 14 rows',
+      '<div class="demo-chart" style="height:300px"><canvas id="ch-ex"></canvas></div>');
+  }
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('Exhibit builder — ' + M.asOfLabel,
+      'Any cut of the firm. <em>Any set of metrics.</em>',
+      'Pick what the rows are, optionally split them by a second dimension, then layer on as many metrics as the question needs. ' +
+      'Filters, axes and metrics all live in the URL, so any exhibit you build is a link you can send.',
+      ['e3e', 'iman', 'ebill', 'adp', 'wv']) +
+
+    secHead('What this can answer', 'the size of the question space') +
+    scenPanel +
+
+    secHead('Filter the population', activeFilterCount() ? activeFilterCount() + ' active' : 'all matters') +
+    renderFilterBar(base) +
+
+    secHead('Choose the metrics', 'layer as many as you need') +
+    panel('Metric picker', srcChip('wv'), picker, ' style="margin-bottom:18px"') +
+
+    secHead('The exhibit', esc(DIMS[exRow].label) + (exSplit ? ' × ' + esc(DIMS[exSplit].label) : '')) +
+    panel('Cross-tab', axis, table, ' style="margin-bottom:18px"') +
+
+    chartPanel;
+
+  if (pivot && pivot.rows.length) drawExChart(pivot, mets[0]);
+}
+
+function drawExChart(pivot, metricId) {
+  var el = document.getElementById('ch-ex');
+  if (!el || typeof Chart === 'undefined') return;
+  var light = document.documentElement.getAttribute('data-theme') === 'light';
+  var text = light ? '#5b6472' : '#a2a2ac';
+  var rows = pivot.rows.slice(0, 14);
+  new Chart(el, {
+    type: 'bar',
+    data: {
+      labels: rows.map(function (r) { return r.key.length > 26 ? r.key.slice(0, 24) + '…' : r.key; }),
+      datasets: [{
+        label: METRICS[metricId].label,
+        data: rows.map(function (r) { return METRICS[metricId].calc(r.rollup, r.items); }),
+        backgroundColor: light ? '#2b4a8b' : '#6d8fd8', borderWidth: 0,
+      }],
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: function (c) { return metricFmt(metricId, c.parsed.x); } } } },
+      scales: {
+        x: { grid: { color: light ? 'rgba(27,34,48,.08)' : 'rgba(255,255,255,.07)' },
+             ticks: { color: text, font: { size: 10 }, callback: function (v) { return metricFmt(metricId, v); } } },
+        y: { grid: { display: false }, ticks: { color: text, font: { size: 10.5 } } },
+      },
+    },
+  });
+}
+
+function exExport() {
+  var M = window.MODEL;
+  var list = applyFilters(scopeMatters(M.matters));
+  var mets = exMetrics.filter(metricAvailable);
+  var pivot = buildPivot(list, exRow, exSplit || null, mets, exSort, exDir);
+
+  var header = [DIMS[exRow].label, 'Matters'];
+  pivot.splitVals.forEach(function (sv) {
+    mets.forEach(function (id) { header.push((sv ? sv + ' — ' : '') + METRICS[id].label); });
+  });
+  var aoa = [header];
+  pivot.rows.forEach(function (r) {
+    var row = [r.key, r.items.length];
+    r.cells.forEach(function (c) { row.push(Math.round(c.value * 1000) / 1000); });
+    aoa.push(row);
+  });
+  var tot = ['TOTAL', list.length];
+  pivot.totals.forEach(function (c) { tot.push(Math.round(c.value * 1000) / 1000); });
+  aoa.push(tot);
+
+  /* the filter set travels with the exhibit so it is self-describing */
+  aoa.push([]); aoa.push(['Filters applied']);
+  var any = false;
+  Object.keys(FILTERS).forEach(function (k) { if (FILTERS[k]) { any = true; aoa.push([k, FILTERS[k]]); } });
+  if (!any) aoa.push(['(none)', 'all matters']);
+  aoa.push([]); aoa.push(['Whitmore Vance LLP — demo environment, fictional data', MODEL.asOf]);
+
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Exhibit');
+  XLSX.writeFile(wb, 'WV-exhibit-' + exRow + (exSplit ? '-by-' + exSplit : '') + '.xlsx');
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>
