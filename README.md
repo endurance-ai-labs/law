@@ -10,7 +10,7 @@ Law-firm instance of the Brain Powered Operating System. Third build on the **CF
 
 Public landing at **`/welcome/`**. Signed-out visitors hitting `/` are redirected there; the landing's "Enter the portal" links carry `?enter=1`, which shows the password gate instead.
 
-**Password: `WHITMORE`** (SHA-256 hash in `js/util.js`; change it by replacing `GATE_HASH`). Then pick a role from the org chart.
+**Password: `enduranceportal`** (SHA-256 hash in `js/util.js`; change it by replacing `GATE_HASH`). Then pick a role from the org chart.
 
 ---
 

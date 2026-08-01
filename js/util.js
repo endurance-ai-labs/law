@@ -152,10 +152,10 @@ function tie(href, label) { return `<a class="tie" href="${href}" title="This fi
 
 /* ============================================================
    Password gate — same pattern as the BPOS and 1100 demos.
-   Password: WHITMORE (case-sensitive). To change it, replace the
+   Password: enduranceportal (case-sensitive). To change it, replace the
    hash below:  node -e "console.log(require('crypto').createHash('sha256').update('NEW').digest('hex'))"
    ============================================================ */
-const GATE_HASH = '8c6668ccce3f9ed7f9a21f2cbbfb63174fceb3e1bf16544aa6a8924b0e4743b9';
+const GATE_HASH = 'ac90f728eed6e93794b7c08e9b4bdb92f43b1442d9dac792443c07983ca221de';
 const GATE_KEY = 'wv_unlocked';
 function isUnlocked() { try { return sessionStorage.getItem(GATE_KEY) === '1'; } catch (e) { return false; } }
 async function _sha256(s) {
