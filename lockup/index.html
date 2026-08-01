@@ -124,6 +124,9 @@ function render() {
     'The slider defaults to five because a number the CFO will not argue with is worth more than a number that is merely true.</div></div>' +
     '<div id="lk-out"></div></div>';
 
+  /* keep the KPI grid rectangular — 4 per row, never a dead cell */
+  while (kpis.length % 4 !== 0) kpis.pop();
+
   document.getElementById('root').innerHTML =
     wallNotice() +
     hero('Lockup — ' + M.asOfLabel,
@@ -131,7 +134,6 @@ function render() {
       fmtN(wipDays + arDays, 0) + ' days between doing the work and banking the money. It is the largest asset the firm owns ' +
       'and the one it manages least — because until now nobody could see it aged by matter, partner and client on one screen.',
       ['e3e', 'ebill', 'wv']) +
-  while (kpis.length % 4 !== 0) kpis.pop();
     '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
     panel('What removing days is worth', srcChip('wv') + ' · drag the slider', calc, ' style="margin-bottom:18px"') +
     panel('Aging by practice group', srcChip('e3e'), agTbl, ' style="margin-bottom:18px"') +

@@ -103,7 +103,6 @@ function render() {
     money ? 'collected, shown set' : 'hours, shown set', ''));
   kpis.push(kpi('Non-hourly work', fmtPct(all.filter(function (m) { return m.fee !== 'hourly'; }).length / all.length * 100),
     'of matters' + '<div class="kpi-foot">' + tie('/law/afa/', 'Fee Arrangements') + '</div>', ''));
-  while (kpis.length % 4 !== 0) kpis.pop();
 
   /* ---------- controls ---------- */
   var sel = function (key, label, opts, cur) {
@@ -171,6 +170,9 @@ function render() {
   var secHead = function (t, n) {
     return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
   };
+
+  /* keep the KPI grid rectangular — 4 per row, never a dead cell */
+  while (kpis.length % 4 !== 0) kpis.pop();
 
   document.getElementById('root').innerHTML =
     wallNotice() +

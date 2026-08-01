@@ -164,6 +164,9 @@ function render() {
   }).join(' ') +
   ' <input type="search" class="demo-search" placeholder="Filter…" oninput="pfSet(\'search\',this.value)" value="' + esc(pfSearch) + '" style="min-width:150px;margin-left:8px">';
 
+  /* keep the KPI grid rectangular — 4 per row, never a dead cell */
+  while (kpis.length % 4 !== 0) kpis.pop();
+
   document.getElementById('root').innerHTML =
     wallNotice() +
     hero('Profitability — ' + M.asOfLabel,
@@ -171,7 +174,6 @@ function render() {
       'Hours priced at what they cost, overhead allocated on a disclosed basis, and every matter ranked by what it actually contributed. ' +
       fmtN(loss.length) + ' active matters are underwater by ' + fmtK(Math.abs(lossTotal)) + ' — and none of them look unprofitable on a billings report.',
       ['e3e', 'adp', 'wv']) +
-  while (kpis.length % 4 !== 0) kpis.pop();
     '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
     panel('Margin by ' + d.label.toLowerCase(), dimBtns, dimTbl, ' style="margin-bottom:18px"') +
     panel('Loss-making matters', srcChip('e3e') + ' ' + srcChip('adp') + ' · active work only', lossTbl, ' style="margin-bottom:18px"') +

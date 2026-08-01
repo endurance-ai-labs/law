@@ -122,6 +122,9 @@ function render() {
       'It is the largest asset the firm owns and the one it manages least. ' + tie('/law/lockup/', 'Lockup') +
     '</div>';
 
+  /* keep the KPI grid rectangular — 4 per row, never a dead cell */
+  while (kpis.length % 4 !== 0) kpis.pop();
+
   document.getElementById('root').innerHTML =
     wallNotice() +
     hero('P&amp;L and balance sheet — ' + M.asOfLabel,
@@ -129,7 +132,6 @@ function render() {
       'Every line decomposes to the matters underneath it, so the statement can never disagree with the dashboard. ' +
       'Nineteen days of assembly, removed.',
       ['e3e', 'adp', 'wv']) +
-  while (kpis.length % 4 !== 0) kpis.pop();
     '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
     panel('Statement of income — trailing twelve months', srcChip('e3e') + ' ' + srcChip('adp') + ' · hover any figure', pnlTbl, ' style="margin-bottom:18px"') +
     panel('Balance sheet', srcChip('e3e') + ' · ' + M.asOf, bsTbl, ' style="margin-bottom:18px"') +

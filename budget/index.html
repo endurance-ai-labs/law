@@ -87,6 +87,9 @@ function render() {
       '<td class="r"></td><td class="r"></td></tr></tfoot></table></div>' +
     '<div style="margin-top:12px"><span class="tie">Annualised revenue ties to the P&amp;L — ' + fmt$2(F.collected) + '</span></div>';
 
+  /* keep the KPI grid rectangular — 4 per row, never a dead cell */
+  while (kpis.length % 4 !== 0) kpis.pop();
+
   document.getElementById('root').innerHTML =
     wallNotice() +
     hero('Budget vs actual — ' + M.asOfLabel,
@@ -94,7 +97,6 @@ function render() {
       'Every line prints its drivers underneath it, so the monthly review starts at the explanation instead of at the number. ' +
       'No tab-hopping to find out what moved.',
       ['e3e', 'adp', 'wv']) +
-  while (kpis.length % 4 !== 0) kpis.pop();
     '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
     panel('Actual vs budget — ' + mo.label, sel + ' <span class="k" style="margin-left:10px">drivers printed under every line</span>',
       avbTbl, ' style="margin-bottom:18px"') +

@@ -96,7 +96,6 @@ function render() {
     kpi('Hours at risk', fmtN(afaRoll.hours, 0),
       'worked under a fixed price', ''),
   ];
-  while (kpis.length % 4 !== 0) kpis.pop();
 
   /* ---------- type comparison ---------- */
   var typeTbl = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
@@ -190,6 +189,9 @@ function render() {
   var secHead = function (t, n) {
     return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
   };
+
+  /* keep the KPI grid rectangular — 4 per row, never a dead cell */
+  while (kpis.length % 4 !== 0) kpis.pop();
 
   document.getElementById('root').innerHTML =
     wallNotice() +

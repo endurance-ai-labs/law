@@ -94,6 +94,9 @@ function render() {
     'Clients using exactly one practice group|The cross-sell opportunity, quantified'));
   kpis.push(kpi('Avg practices per client', fmtN(book.reduce(function (s, x) { return s + x.practices.length; }, 0) / book.length, 2),
     'depth of relationship', ''));
+  kpis.push(kpi('On e-billing portals', fmtN(book.filter(function (x) { return x.c.ebillPortal; }).length),
+    'guideline-governed clients' + (money ? '<div class="kpi-foot">' + tie('/law/billing/', 'Billing') + '</div>' : ''), '',
+    'Clients that require submission through an e-billing portal|Each carries its own outside counsel guidelines, parsed into pre-bill checks'));
 
   /* ---------- table ---------- */
   var page = rows.slice(0, clLimit);
@@ -164,6 +167,9 @@ function render() {
       'No single partner sees this — each of these clients belongs to a different relationship partner, and the pattern only exists at firm level.' +
     '</div>', ' style="margin-bottom:18px"') : '';
 
+  /* keep the KPI grid rectangular — 4 per row, never a dead cell */
+  while (kpis.length % 4 !== 0) kpis.pop();
+
   document.getElementById('root').innerHTML =
     wallNotice() +
     hero('Client book — ' + M.asOfLabel,
@@ -171,7 +177,6 @@ function render() {
       'Revenue, margin, lockup, cross-sell depth and relationship strength for every client, ' +
       'joined from the ledger, the CRM and email metadata. Sorted by revenue.',
       ['e3e', 'crm', 'graph', 'wv']) +
-  while (kpis.length % 4 !== 0) kpis.pop();
     '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
     shrinkPanel +
     panel('Client register', controls, tbl);

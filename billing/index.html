@@ -171,6 +171,9 @@ function render() {
     { role: 'cfo',   label: 'CFO release — submit to client portals' },
   ]);
 
+  /* keep the KPI grid rectangular — 4 per row, never a dead cell */
+  while (kpis.length % 4 !== 0) kpis.pop();
+
   document.getElementById('root').innerHTML =
     wallNotice() +
     hero('Billing &amp; e-billing — ' + M.asOfLabel,
@@ -179,7 +182,6 @@ function render() {
       fmtPct(E.appealed / E.rejected * 100) + ' of it gets appealed, because finding the rest costs more than most lines are worth. ' +
       'This page finds them — and stops most of them ever being submitted.',
       ['ebill', 'e3e', 'intapp', 'wv']) +
-  while (kpis.length % 4 !== 0) kpis.pop();
     '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
     panel('Why invoices come back', srcChip('ebill') + ' · reason taxonomy across every portal', reasonPanel, ' style="margin-bottom:18px"') +
     panel('Pre-submission compliance check', srcChip('intapp') + ' ' + srcChip('e3e') + ' · live against client guidelines', checkPanel, ' style="margin-bottom:18px"') +
