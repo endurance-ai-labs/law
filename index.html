@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Firm Dashboard · Whitmore Vance LLP</title>
-<link rel="stylesheet" href="/law/css/theme.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/endurance.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/demo.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801b">
 </head>
 <body>
 <div id="topbar"></div>
@@ -23,104 +23,157 @@
 <script>
 renderTopbar();
 
-/* page-scoped state — declared with var, before any render call (TDZ trap) */
-var wvScope = 'firm';
+/* page state — var, declared before any render() call (TDZ trap) */
+var homeScope = 'firm';
+
+function greeting() {
+  var h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}
+function longDate() {
+  var d = new Date();
+  var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var mos = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return days[d.getDay()] + ', ' + mos[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+}
 
 function render() {
   var M = window.MODEL, F = M.firm;
   var me = currentPersona();
   if (!me) return;
 
-  /* every page respects walls + practice scoping; totals follow the filtered set */
+  /* every figure respects walls + practice scoping; totals follow the filtered set */
   var mine = scopeMatters(M.matters);
   var scoped = mine.length !== M.matters.length;
   var R = scoped ? M.rollup(mine) : F;
   if (scoped) {
     R.realization = R.collected / R.standardValue;
+    R.billingRealization = R.billed / R.standardValue;
     R.marginPct = R.margin / R.collected;
     R.effectiveRate = R.collected / R.hours;
     R.standardRate = R.standardValue / R.hours;
     R.lockupDays = (R.wip + R.arTotal) / (R.collected / 365);
+  } else {
+    R.lockupDays = F.lockupDays;
+    R.billingRealization = F.billingRealization;
   }
 
   var money = can('fin');
   var margin = can('margin');
+  var first = me.name.split(' ')[0];
 
-  /* ---------- KPI band ---------- */
+  /* ---------- masthead ---------- */
+  var stateLine = money
+    ? 'The firm has collected <b>' + fmtK(R.collected) + '</b> over the last twelve months at <b>' +
+      fmtPct(R.realization * 100) + '</b> realization, with <b>' + fmtK(R.wip + R.arTotal) +
+      '</b> still tied up in unbilled work and receivables. ' +
+      (scoped ? 'Scoped to ' + esc(me.group) + '.' : M.triage.filter(function (t) { return t.sev === 'red'; }).length + ' items need a decision today.')
+    : 'You have <b>' + fmtN(R.active) + '</b> open matters across <b>' + fmtN(new Set(mine.filter(function (m) { return m.active; }).map(function (m) { return m.clientId; })).size) +
+      '</b> clients. Financial figures are not shown to your role.';
+
+  var mast =
+    '<div class="mast">' +
+      '<div>' +
+        '<div class="mast-date">' + longDate() + ' · ' + esc(me.title) + '</div>' +
+        '<div class="mast-hello">' + greeting() + ', <em>' + esc(first) + '</em>.</div>' +
+        '<div class="mast-line">' + stateLine + '</div>' +
+      '</div>' +
+      '<div class="mast-right">' +
+        '<span class="demo-live"><span class="dot"></span>Live · synced 6 min ago</span>' +
+        srcRow(['e3e', 'iman', 'ebill', 'adp', 'wv']) +
+        '<div style="font-size:11px;color:var(--color-slate-hint);text-align:right;max-width:34ch;line-height:1.5">' +
+          'Every panel names the system it came from and drills to the record.</div>' +
+      '</div>' +
+    '</div>';
+
+  /* ---------- KPI band — always a clean 4 × N grid ---------- */
   var kpis = [];
   if (money) {
-    kpis.push(kpi('Revenue — TTM', fmtK(R.collected),
-      'collected ' + M.asOfLabel + ' TTM ' + tie('/law/revenue/', 'Revenue'), '',
-      'Collected fees, trailing 12 months|Sum of collections across ' + fmtN(R.matters) + ' matters|Source: Elite 3E cash receipts|Ties to Revenue & Realization page'));
+    kpis.push(kpi('Revenue — trailing 12 months', fmtK(R.collected),
+      '<div class="kpi-foot">' + tie('/law/revenue/', 'Revenue &amp; Realization') + '</div>', '',
+      'Collected fees, trailing 12 months|Sum of collections across ' + fmtN(R.matters) + ' matters|Source: Elite 3E cash receipts|The revenue page reports the same figure — one computation, two pages'));
     kpis.push(kpi('Realization', fmtPct(R.realization * 100),
-      'billing ' + fmtPct(R.billingRealization ? R.billingRealization * 100 : (R.billed / R.standardValue) * 100) +
-      ' × collection ' + fmtPct((R.collected / R.billed) * 100), 'green',
-      'Collected ÷ standard value|Standard value = ' + fmt$(R.standardValue) + '|Collected = ' + fmt$(R.collected) + '|Every point is worth ' + fmtK(R.standardValue / 100) + ' a year'));
+      'billing ' + fmtPct(R.billingRealization * 100) + ' × collection ' + fmtPct((R.collected / R.billed) * 100), 'green',
+      'Collected ÷ standard value|Standard value ' + fmt$(R.standardValue) + '|Collected ' + fmt$(R.collected) + '|One point is worth ' + fmtK(R.standardValue / 100) + ' a year'));
     kpis.push(kpi('Lockup', fmtN(R.lockupDays, 0) + ' days',
-      'WIP ' + fmtN(R.wip / (R.collected / 365), 0) + ' + AR ' + fmtN(R.arTotal / (R.collected / 365), 0) + ' ' + tie('/law/lockup/', 'Lockup'), 'amber',
-      'WIP days + AR days|Unbilled WIP = ' + fmt$(R.wip) + '|AR = ' + fmt$(R.arTotal) + '|Revenue per day = ' + fmt$(R.collected / 365) + '|One day = ' + fmtK(R.collected / 365) + ' of working capital'));
-  }
-  kpis.push(kpi('Utilization', fmtPct(F.utilization * 100),
-    fmtN(R.hours, 0) + ' billable hours', '',
-    'Billable hours ÷ target hours|Firm capacity = ' + fmtN(M.timekeepers.reduce(function (s, t) { return s + t.target; }, 0), 0) + ' target hours|Across ' + M.timekeepers.length + ' timekeepers'));
-  if (margin) {
-    kpis.push(kpi('Contribution margin', fmtPct(R.marginPct * 100),
-      fmtK(R.margin) + ' after allocated overhead ' + tie('/law/profitability/', 'Profitability'), 'green',
-      'Collections − cost of hours − allocated overhead − net disbursements|Cost rates from ADP payroll|Overhead allocated at ' + fmtPct(MODEL_OVERHEAD_K * 100, 0) + ' of direct work cost'));
+      'WIP ' + fmtN(R.wip / (R.collected / 365), 0) + ' + AR ' + fmtN(R.arTotal / (R.collected / 365), 0) +
+      '<div class="kpi-foot">' + tie('/law/lockup/', 'Lockup') + '</div>', 'amber',
+      'WIP days + AR days|Unbilled WIP ' + fmt$(R.wip) + '|Receivables ' + fmt$(R.arTotal) + '|One day = ' + fmtK(R.collected / 365) + ' of working capital'));
+    kpis.push(kpi('Contribution margin', margin ? fmtPct(R.marginPct * 100) : '—',
+      margin ? fmtK(R.margin) + ' after allocated overhead' +
+        '<div class="kpi-foot">' + tie('/law/profitability/', 'Profitability') + '</div>' : 'requires margin access', 'green',
+      margin ? 'Collections − cost of hours − allocated overhead − net disbursements|Cost rates from ADP payroll|Overhead allocated at ' + fmtPct(M.overheadK * 100, 0) + ' of direct work cost' : ''));
   }
   kpis.push(kpi('Open matters', fmtN(R.active),
-    fmtN(R.matters) + ' worked in the period ' + tie('/law/matters/', 'Matters'), ''));
-  /* firm-wide comparatives only make sense for firm-wide roles — a group leader
-     seeing firm RPL or firm client concentration next to their own revenue is
-     a leak, not a feature */
+    fmtN(R.matters) + ' worked in the period' + '<div class="kpi-foot">' + tie('/law/matters/', 'Matters') + '</div>', ''));
+  kpis.push(kpi('Utilization', fmtPct(F.utilization * 100),
+    fmtN(R.hours, 0) + ' billable hours', '',
+    'Billable hours ÷ target hours|Firm capacity ' + fmtN(M.timekeepers.reduce(function (s, t) { return s + t.target; }, 0), 0) + ' target hours across ' + M.timekeepers.length + ' timekeepers'));
   if (money && !scoped) {
     kpis.push(kpi('Revenue per lawyer', fmtK(R.collected / F.lawyers),
-      F.lawyers + ' lawyers · ' + F.headcount + ' total', ''));
-    kpis.push(kpi('Top-10 concentration', fmtPct(F.top10Share * 100),
-      'top 25 = ' + fmtPct(F.top25Share * 100) + ' ' + tie('/law/clients/', 'Clients'), F.top10Share > 0.3 ? 'amber' : ''));
+      F.lawyers + ' lawyers · ' + F.headcount + ' people', ''));
+    kpis.push(kpi('Top-10 client concentration', fmtPct(F.top10Share * 100),
+      'top 25 = ' + fmtPct(F.top25Share * 100) + '<div class="kpi-foot">' + tie('/law/clients/', 'Client Book') + '</div>',
+      F.top10Share > 0.3 ? 'amber' : ''));
   } else if (money) {
     var myLawyers = M.lawyers.filter(function (t) { return t.practice === me.group; }).length || 1;
-    kpis.push(kpi('Revenue per lawyer', fmtK(R.collected / myLawyers),
-      myLawyers + ' lawyers in ' + esc(me.group), '',
-      'Group collections ÷ lawyers in the group|' + fmt$(R.collected) + ' ÷ ' + myLawyers + '|Firm-wide figures are not shown to group-scoped roles'));
+    kpis.push(kpi('Revenue per lawyer', fmtK(R.collected / myLawyers), myLawyers + ' lawyers in ' + esc(me.group), '',
+      'Group collections ÷ lawyers in the group|Firm-wide figures are not shown to group-scoped roles'));
+    kpis.push(kpi('Effective rate', fmt$(R.effectiveRate), 'what a billed hour earns', ''));
   }
+  /* pad to a multiple of 4 so the grid never shows a dead cell */
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* ---------- overnight strip ---------- */
+  var newMatters = mine.filter(function (m) { return m.opened >= '2026-07-01'; }).length;
+  var billsOut = Math.round(R.billed / 12 / 48000);
+  var deadlines = scoped ? 14 : 61;
+  var ovDelta = R.collected / 365 * 1.8;
+  var overnight =
+    '<div class="overnight">' +
+      '<div class="ov"><div class="ov-l">New matters opened</div><div class="ov-v">' + newMatters + '</div>' +
+        '<div class="ov-d">Through intake and conflicts this month.</div></div>' +
+      '<div class="ov"><div class="ov-l">Bills released</div><div class="ov-v">' + fmtN(billsOut) + '</div>' +
+        '<div class="ov-d">Submitted to client portals in the last cycle.</div></div>' +
+      '<div class="ov"><div class="ov-l">Deadlines inside 7 days</div><div class="ov-v" style="color:var(--color-amber)">' + deadlines + '</div>' +
+        '<div class="ov-d">Rules-computed. Nine added since yesterday.</div></div>' +
+      '<div class="ov"><div class="ov-l">Lockup movement</div><div class="ov-v" style="color:var(--color-green)">−' + fmtK(ovDelta) + '</div>' +
+        '<div class="ov-d">Down 1.8 days month over month.</div></div>' +
+    '</div>';
 
   /* ---------- revenue leak waterfall ---------- */
   var wfRows = [
-    ['Standard value', R.standardValue, '', 'Hours × standard rates before any reduction'],
-    ['Discounts', -R.discount, 'leak', 'Negotiated and client-programme discounts'],
-    ['Write-downs', -R.writeDown, 'leak', 'Time reduced by the billing partner before the bill went out'],
+    ['Standard value', R.standardValue, '', 'Hours × standard rates, before any reduction'],
+    ['Discounts', -R.discount, 'leak', 'Negotiated rates and client programmes'],
+    ['Write-downs', -R.writeDown, 'leak', 'Time cut by the billing partner before the bill went out'],
     ['Billed', R.billed, '', 'Value actually invoiced to clients'],
-    ['Collection shortfall', -(R.billed - R.collected), 'leak', 'Short-pays, negotiated reductions and rejections after billing'],
+    ['Collection shortfall', -(R.billed - R.collected), 'leak', 'Short-pays, rejections and reductions after billing'],
     ['Collected', R.collected, 'net', 'Cash in the door'],
   ];
-  var wfMax = R.standardValue;
   var wf = '<div class="wf">' + wfRows.map(function (r) {
     var val = Math.abs(r[1]);
     return '<div class="wf-row"><div class="wf-l">' + r[0] + '</div>' +
-      '<div class="wf-track"><div class="wf-bar ' + r[2] + '" style="width:' + (val / wfMax * 100).toFixed(1) + '%"></div></div>' +
+      '<div class="wf-track"><div class="wf-bar ' + r[2] + '" style="width:' + (val / R.standardValue * 100).toFixed(1) + '%"></div></div>' +
       '<div class="wf-v" data-exp="' + esc(r[0]) + '|' + esc(r[3]) + '|' + fmt$2(r[1]) + '">' + (r[1] < 0 ? '−' : '') + fmtK(val) + '</div></div>';
   }).join('') + '</div>' +
-  '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted)">' +
+  '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
     'The firm produced <b>' + fmtK(R.standardValue) + '</b> of work and collected <b>' + fmtK(R.collected) + '</b>. ' +
-    'The gap — <b style="color:var(--wv-burgundy)">' + fmtK(R.standardValue - R.collected) + '</b> — is what a leak analysis costs a firm that cannot see it drawn. ' +
-    'That is <b>' + fmt$(R.standardRate - R.effectiveRate) + '</b> of every billed hour.' +
+    'The gap — <b style="color:var(--wv-burgundy)">' + fmtK(R.standardValue - R.collected) + '</b> — is <b>' +
+    fmt$(R.standardRate - R.effectiveRate) + '</b> of every billed hour. ' + tie('/law/revenue/', 'Full leak analysis') +
   '</div>';
 
-  /* ---------- practice group heat grid ----------
-     Built from the SCOPED matter set, so a group-scoped user sees only their
-     own group rather than every group's economics. */
+  /* ---------- practice heat grid ---------- */
   var pracMap = scoped ? M.rollupMap(mine, function (m) { return m.practice; }) : M.byPractice;
   var pracRows = M.practices.map(function (p) { return [p.name, pracMap[p.name]]; })
     .filter(function (x) { return x[1]; })
     .sort(function (a, b) { return b[1].collected - a[1].collected; });
   var lv = function (v, lo, hi) { return String(clamp(Math.ceil((v - lo) / (hi - lo) * 5), 1, 5)); };
   var heat = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl heat">' +
-    '<thead><tr><th>Practice group</th><th class="r">Revenue</th><th class="r">Share</th><th class="r">Realization</th>' +
+    '<thead><tr><th class="first-sticky">Practice group</th><th class="r">Revenue</th><th class="r">Share</th><th class="r">Realization</th>' +
     (margin ? '<th class="r">Margin</th>' : '') + '<th class="r">Eff. rate</th><th class="r">Leverage</th><th class="r">Lockup</th><th class="r">Matters</th></tr></thead><tbody>' +
     pracRows.map(function (x) {
       var n = x[0], r = x[1];
-      return '<tr><td><b>' + n + '</b></td>' +
+      return '<tr><td class="first-sticky"><b>' + n + '</b></td>' +
         '<td class="r">' + fmtK(r.collected) + '</td>' +
         '<td class="r">' + fmtPct(r.collected / R.collected * 100) + '</td>' +
         '<td class="r h" data-lv="' + lv(r.realization, 0.83, 0.91) + '">' + fmtPct(r.realization * 100) + '</td>' +
@@ -130,7 +183,7 @@ function render() {
         '<td class="r h" data-lv="' + lv(-r.lockupDays, -140, -90) + '">' + fmtN(r.lockupDays, 0) + 'd</td>' +
         '<td class="r">' + fmtN(r.matters) + '</td></tr>';
     }).join('') +
-    '</tbody><tfoot><tr class="totals-row"><td><b>Firm</b></td>' +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + (scoped ? esc(me.group) : 'Firm') + '</b></td>' +
       '<td class="r"><b>' + fmtK(R.collected) + '</b></td><td class="r">100.0%</td>' +
       '<td class="r"><b>' + fmtPct(R.realization * 100) + '</b></td>' +
       (margin ? '<td class="r"><b>' + fmtPct(R.marginPct * 100) + '</b></td>' : '') +
@@ -141,30 +194,77 @@ function render() {
 
   /* ---------- triage ---------- */
   var triage = '<div class="triage">' + M.triage.map(function (t) {
-    return '<a class="tri ' + t.sev + '" href="' + t.href + '" style="text-decoration:none;color:inherit">' +
+    return '<a class="tri ' + t.sev + '" href="/law' + t.href + '" style="text-decoration:none;color:inherit">' +
       '<span class="sev"></span><div><div class="t">' + t.t + '</div><div class="d">' + t.d + '</div></div>' +
       '<div class="a">' + t.a + '</div></a>';
   }).join('') + '</div>';
 
-  /* ---------- assemble ---------- */
-  document.getElementById('root').innerHTML =
-    wallNotice() +
-    hero('Firm dashboard — ' + M.asOfLabel,
-      fmtN(R.matters) + ' matters. <em>One operating picture.</em>',
-      'Every figure below is joined from the systems named on each panel and drills to the underlying record. ' +
-      (scoped ? '<b>Scoped to your practice group and screened for ethical walls.</b>' :
-                'Nothing here was exported, rekeyed or assembled by hand.'),
-      ['e3e', 'iman', 'ebill', 'adp', 'wv']) +
-    '<div class="demo-kpis" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr))">' + kpis.join('') + '</div>' +
-    (money ? panel('Where the money goes', srcChip('e3e') + ' ' + srcChip('wv'), wf, ' style="margin-bottom:18px"') : '') +
-    panel(scoped ? 'Group performance' : 'Practice group performance',
-      srcChip('e3e') + ' ' + srcChip('adp') + ' · hover any cell for its derivation', heat, ' style="margin-bottom:18px"') +
-    /* the triage list is a firm-wide read; group-scoped roles don't get it */
-    (scoped ? '' : panel('Needs attention', 'joined across ' + Object.keys(SRC).length + ' connected systems', triage, ' style="margin-bottom:18px"')) +
-    panel('Collections — 24 months', srcChip('e3e'),
-      '<div class="demo-chart" style="height:280px"><canvas id="ch-rev"></canvas></div>');
+  /* ---------- top clients + offices ---------- */
+  var byClient = M.rollupMap(mine, function (m) { return m.clientId; });
+  var topClients = Object.keys(byClient).map(function (cid) {
+    var c = M.clientById[cid];
+    return { c: c, r: byClient[cid], delta: c._revPrior ? (byClient[cid].collected - c._revPrior) / c._revPrior : 0 };
+  }).sort(function (a, b) { return b.r.collected - a.r.collected; }).slice(0, 8);
 
-  drawChart(M);
+  var clientList = '<div class="rank">' + topClients.map(function (x, i) {
+    var up = x.delta >= 0;
+    return '<a class="rk" href="/law/clients/">' +
+      '<span class="n">' + String(i + 1).padStart(2, '0') + '</span>' +
+      '<span><span class="t">' + esc(x.c.name) + '</span>' +
+      '<span class="s">' + esc(x.c.industry) + ' · ' + fmtN(x.r.matters) + ' matters</span></span>' +
+      '<span class="v">' + fmtK(x.r.collected) +
+      '<small style="color:' + (up ? 'var(--color-green)' : 'var(--color-red)') + '">' + (up ? '▲' : '▼') + ' ' + fmtPct(Math.abs(x.delta) * 100) + ' YoY</small></span></a>';
+  }).join('') + '</div>';
+
+  var offMap = M.rollupMap(mine, function (m) { return m.office; });
+  var offList = '<div class="rank">' + M.offices.map(function (o) { return { o: o, r: offMap[o.id] }; })
+    .filter(function (x) { return x.r; })
+    .sort(function (a, b) { return b.r.collected - a.r.collected; })
+    .map(function (x, i) {
+      var lawyers = M.lawyers.filter(function (t) { return t.office === x.o.id; }).length;
+      return '<a class="rk" href="/law/revenue/">' +
+        '<span class="n">' + String(i + 1).padStart(2, '0') + '</span>' +
+        '<span><span class="t">' + esc(x.o.name) + (x.o.hq ? ' <span style="font-size:9px;font-weight:800;color:var(--color-slate-hint);letter-spacing:.1em">HQ</span>' : '') + '</span>' +
+        '<span class="s">' + lawyers + ' lawyers · ' + fmtN(x.r.matters) + ' matters</span></span>' +
+        '<span class="v">' + fmtK(x.r.collected) +
+        '<small style="color:var(--color-text-muted)">' + fmtPct(x.r.collected / R.collected * 100) + ' of firm</small></span></a>';
+    }).join('') + '</div>';
+
+  /* ---------- assemble ---------- */
+  var secHead = function (title, note) {
+    return '<div class="sec-head"><h2>' + title + '</h2><span class="rule"></span>' +
+      (note ? '<span class="note">' + note + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    mast +
+    wallNotice() +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    secHead('Since yesterday', 'across ' + Object.keys(SRC).length + ' connected systems') +
+    overnight +
+
+    (money ? secHead('Where the money goes', M.asOfLabel + ' · trailing twelve months') +
+      '<div class="row2">' +
+        panel('The revenue leak', srcChip('e3e') + ' ' + srcChip('wv'), wf) +
+        panel('Collections', srcChip('e3e') + ' · 24 months',
+          '<div class="demo-chart" style="height:300px"><canvas id="ch-rev"></canvas></div>') +
+      '</div>' : '') +
+
+    secHead(scoped ? 'Group performance' : 'Practice group performance', 'hover any cell for its derivation') +
+    panel(scoped ? esc(me.group) : 'All practice groups', srcChip('e3e') + ' ' + srcChip('adp'), heat) +
+
+    (scoped ? '' :
+      secHead('Needs a decision', 'joined across systems, ranked by exposure') +
+      panel('Attention list', srcChip('e3e') + ' ' + srcChip('ebill') + ' ' + srcChip('crm'), triage)) +
+
+    (money ? secHead('Relationships', 'revenue concentration and where it sits') +
+      '<div class="row2">' +
+        panel('Largest clients', srcChip('e3e') + ' ' + srcChip('crm') + ' · top 8', clientList) +
+        panel('By office', srcChip('e3e'), offList) +
+      '</div>' : '');
+
+  if (money) drawChart(M);
 }
 
 function drawChart(M) {
@@ -178,8 +278,10 @@ function drawChart(M) {
     data: {
       labels: M.series.map(function (s) { return s.label; }),
       datasets: [
-        { label: 'Standard value', data: M.series.map(function (s) { return s.standard; }), backgroundColor: light ? 'rgba(43,74,139,.18)' : 'rgba(109,143,216,.20)', borderWidth: 0 },
-        { label: 'Collected', data: M.series.map(function (s) { return s.collected; }), backgroundColor: light ? '#2b4a8b' : '#6d8fd8', borderWidth: 0 },
+        { label: 'Standard value', data: M.series.map(function (s) { return s.standard; }),
+          backgroundColor: light ? 'rgba(43,74,139,.16)' : 'rgba(109,143,216,.18)', borderWidth: 0 },
+        { label: 'Collected', data: M.series.map(function (s) { return s.collected; }),
+          backgroundColor: light ? '#2b4a8b' : '#6d8fd8', borderWidth: 0 },
       ],
     },
     options: {
@@ -189,7 +291,7 @@ function drawChart(M) {
         tooltip: { callbacks: { label: function (c) { return c.dataset.label + ': ' + fmt$(c.parsed.y); } } },
       },
       scales: {
-        x: { grid: { display: false }, ticks: { color: text, font: { size: 10 } } },
+        x: { grid: { display: false }, ticks: { color: text, font: { size: 10 }, maxRotation: 0, autoSkipPadding: 12 } },
         y: { grid: { color: grid }, ticks: { color: text, font: { size: 10 }, callback: function (v) { return fmtK(v); } } },
       },
     },

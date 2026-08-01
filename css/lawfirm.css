@@ -40,8 +40,85 @@
   font-size: 13px; font-weight: 800; letter-spacing: 0.02em; color: #fff;
   box-shadow: 0 2px 8px rgba(43, 74, 139, 0.3);
 }
-.wv-name { font-size: 14.5px; font-weight: 800; letter-spacing: -0.01em; color: var(--color-cloud-whisper); line-height: 1.15; }
-.wv-sub  { font-size: 8.5px; letter-spacing: 0.19em; text-transform: uppercase; color: var(--color-text-muted); margin-top: 2px; }
+/* the two lines MUST be block — as inline spans they wrap mid-name and overlap */
+.brand > span:last-child { display: block; min-width: 0; }
+.wv-name { display: block; font-size: 14.5px; font-weight: 800; letter-spacing: -0.01em;
+  color: var(--color-cloud-whisper); line-height: 1.15; white-space: nowrap; }
+.wv-sub  { display: block; font-size: 8.5px; letter-spacing: 0.19em; text-transform: uppercase;
+  color: var(--color-text-muted); margin-top: 3px; line-height: 1; white-space: nowrap; }
+@media (max-width: 1180px) { .wv-sub { display: none; } }
+@media (max-width: 1040px) { .wv-name { font-size: 13px; } }
+
+/* ============================================================
+   Institutional dashboard furniture
+   ============================================================ */
+
+/* ---- Masthead: greeting + date + state of the firm ---- */
+.mast {
+  display: grid; grid-template-columns: 1fr auto; gap: 28px; align-items: start;
+  padding-bottom: 22px; margin-bottom: 24px; border-bottom: 1px solid var(--color-border);
+}
+@media (max-width: 900px) { .mast { grid-template-columns: 1fr; } }
+.mast-hello { font-size: 30px; font-weight: 800; letter-spacing: -0.025em; line-height: 1.12; }
+.mast-hello em { font-style: normal; color: var(--color-blue-light); }
+.mast-date {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--color-slate-hint); margin-bottom: 9px;
+}
+.mast-line { font-size: 14px; color: var(--color-text-muted); max-width: 78ch; margin-top: 10px; line-height: 1.6; }
+.mast-line b { color: var(--color-cloud-whisper); font-weight: 700; }
+.mast-right { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
+@media (max-width: 900px) { .mast-right { align-items: flex-start; } }
+
+/* ---- Section headers: the institutional spine ---- */
+.sec-head {
+  display: flex; align-items: baseline; gap: 14px; margin: 34px 0 16px;
+}
+.sec-head:first-child { margin-top: 0; }
+.sec-head h2 {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--color-blue-light); white-space: nowrap;
+}
+.sec-head .rule { flex: 1; height: 1px; background: var(--color-border); }
+.sec-head .note { font-size: 11.5px; color: var(--color-slate-hint); white-space: nowrap; }
+
+/* ---- KPI band: fixed columns so it never leaves dead cells ---- */
+.demo-kpis.k4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1180px) { .demo-kpis.k4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px)  { .demo-kpis.k4 { grid-template-columns: 1fr; } }
+.kpi { display: flex; flex-direction: column; }
+.kpi-foot { margin-top: auto; padding-top: 9px; }
+
+/* ---- Overnight strip: what changed since yesterday ---- */
+.overnight { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1180px) { .overnight { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px)  { .overnight { grid-template-columns: 1fr; } }
+.ov {
+  background: var(--color-bg-3); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); padding: 13px 15px;
+}
+.ov .ov-l { font-size: 10px; font-weight: 800; letter-spacing: 0.11em; text-transform: uppercase; color: var(--color-slate-hint); }
+.ov .ov-v { font-size: 19px; font-weight: 800; margin-top: 5px; font-variant-numeric: tabular-nums; }
+.ov .ov-d { font-size: 11.5px; color: var(--color-text-muted); margin-top: 3px; line-height: 1.5; }
+
+/* ---- Two-column panel row ---- */
+.row2 { display: grid; grid-template-columns: 1.15fr .85fr; gap: 18px; align-items: start; }
+@media (max-width: 1100px) { .row2 { grid-template-columns: 1fr; } }
+.row2 > .demo-panel { margin: 0; }
+
+/* ---- Ranked list (top clients, offices) ---- */
+.rank { display: grid; gap: 1px; }
+.rk {
+  display: grid; grid-template-columns: 22px 1fr auto; gap: 12px; align-items: center;
+  padding: 10px 2px; border-bottom: 1px solid var(--color-border-soft); text-decoration: none; color: inherit;
+}
+.rk:last-child { border-bottom: 0; }
+.rk:hover { background: var(--color-bg-3); }
+.rk .n { font-size: 10.5px; font-weight: 800; color: var(--color-slate-hint); font-variant-numeric: tabular-nums; }
+.rk .t { font-size: 13px; font-weight: 700; }
+.rk .s { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+.rk .v { font-size: 13.5px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rk .v small { display: block; font-size: 10.5px; font-weight: 600; margin-top: 2px; }
 
 /* ---- Source chips: one per connected system ---- */
 .src-chip {
@@ -132,6 +209,10 @@
   font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
   color: var(--color-slate-hint); opacity: .72;
 }
+
+/* ---- Hero: keep the right rail top-aligned, never let it drift ---- */
+.demo-hero { align-items: flex-start; }
+.demo-hero-right { flex-shrink: 0; }
 
 /* ---- Waterfall bars (revenue leak) ---- */
 .wf { display: grid; gap: 7px; }

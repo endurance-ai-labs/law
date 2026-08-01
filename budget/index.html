@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Budget vs Actual · Whitmore Vance LLP</title>
-<link rel="stylesheet" href="/law/css/theme.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/endurance.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/demo.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801b">
 </head>
 <body>
 <div id="topbar"></div>
@@ -94,7 +94,8 @@ function render() {
       'Every line prints its drivers underneath it, so the monthly review starts at the explanation instead of at the number. ' +
       'No tab-hopping to find out what moved.',
       ['e3e', 'adp', 'wv']) +
-    '<div class="demo-kpis" style="grid-template-columns:repeat(auto-fit,minmax(205px,1fr))">' + kpis.join('') + '</div>' +
+  while (kpis.length % 4 !== 0) kpis.pop();
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
     panel('Actual vs budget — ' + mo.label, sel + ' <span class="k" style="margin-left:10px">drivers printed under every line</span>',
       avbTbl, ' style="margin-bottom:18px"') +
     panel('Revenue against budget — trailing twelve months', srcChip('e3e'),

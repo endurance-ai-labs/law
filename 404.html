@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Module in build · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801b">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+/* Every module the portal will contain, with what each one holds and when it
+   lands. GitHub Pages serves this file for any path that has no index.html,
+   so an unbuilt module explains itself rather than throwing a 404. */
+var MODULES = {
+  '/law/matter/':        ['Matter workspace', 'Phase 3', 'The deepest page in the portal: budget burn against phase and task codes, the document list from iManage, docket deadlines, bills with rejected lines flagged, the team with cost rates, and an activity timeline joined across every system.'],
+  '/law/comp/':          ['Partner compensation', 'Phase 2', 'The comp model — points, lockstep and origination blend, with the origination-versus-working-credit split as a lever and scenarios you can save.'],
+  '/law/scorecard/':     ['Partner scorecards', 'Phase 2', 'Per-partner: originations, working attribution, hours, realization, matter margin, client book, pipeline and cross-sell, banded against peer percentiles.'],
+  '/law/board/':         ['Management committee pack', 'Phase 2', 'The board pack, generated. Printable, with commentary and variance drivers under every line.'],
+  '/law/litigation/':    ['Docket & deadline command centre', 'Phase 5', 'Rules-computed deadlines by jurisdiction, unassigned and at-risk items, judge and venue analytics, opposing counsel history.'],
+  '/law/transactions/':  ['Deal room', 'Phase 5', 'Live deals, closing checklists, signature-page status, turn counts and clause deviation from the firm standard.'],
+  '/law/ediscovery/':    ['eDiscovery', 'Phase 5', 'Volumes ingested, review throughput per reviewer, cost per gigabyte by vendor and the hosting spend run-rate.'],
+  '/law/knowledge/':     ['Knowledge & experience', 'Phase 5', 'Precedent and experience search across the DMS and matter profiles — find the best three agreements with a given clause, or who has done this deal before.'],
+  '/law/people/':        ['Roster & utilization', 'Phase 6', 'Utilization shown as a distribution rather than an average, billable and non-billable mix, pro bono, and class-year cohorts.'],
+  '/law/capacity/':      ['Capacity planning', 'Phase 6', 'Forward demand from open matters and weighted pipeline against available hours, with the over- and under-allocated named.'],
+  '/law/development/':   ['Development & CLE', 'Phase 6', 'Associate progression, evaluation history, CLE compliance by jurisdiction with the at-risk list, bar admissions.'],
+  '/law/retention/':     ['Retention risk', 'Phase 6', 'Attrition risk from hours dispersion, after-hours load, evaluation trend, comp position and tenure — with a cost-of-attrition calculator.'],
+  '/law/pipeline/':      ['Pitches & pipeline', 'Phase 6', 'Pitches and RFPs by stage, weighted value, win and loss with reason codes, and win rate by practice, partner and source.'],
+  '/law/origination/':   ['Origination & cross-sell', 'Phase 6', 'The origination credit ledger and a client-by-practice matrix with the white space highlighted.'],
+  '/law/marketing/':     ['Marketing & rankings', 'Phase 6', 'Campaigns, events, directory submissions with deadline tracking, and thought-leadership attributed to pipeline.'],
+  '/law/intake/':        ['New business intake', 'Phase 4', 'The intake workflow with its full approval chain — conflicts, financial, risk, practice leader — and cycle-time analytics.'],
+  '/law/conflicts/':     ['Conflicts', 'Phase 4', 'Search, the hit-resolution queue, corporate-family expansion and the waivers register.'],
+  '/law/walls/':         ['Ethical walls', 'Phase 4', 'The wall register, plus the access-attempt audit log. The enforcement itself is already live — a screened matter is removed before any figure is computed.'],
+  '/law/trust/':         ['Trust & IOLTA', 'Phase 4', 'Client money by matter, three-way reconciliation state, exceptions for negative balances and stale funds, and the disbursement approval chain.'],
+  '/law/ocg/':           ['Outside counsel guidelines', 'Phase 4', 'Each client’s guidelines parsed into enforceable rules — staffing restrictions, rate freezes, block-billing bans, travel policy, approval thresholds.'],
+  '/law/insurance/':     ['Claims & professional indemnity', 'Phase 4', 'The claims and circumstances register, policy limits and incident reporting.'],
+  '/law/collections/':   ['Collections', 'Phase 7', 'The AR work queue, promise-to-pay tracking, the escalation ladder and collector performance.'],
+  '/law/vendors/':       ['Vendors & cost recovery', 'Phase 7', 'Vendor spend across eDiscovery, experts, court reporters and research, with the recovery capture rate.'],
+  '/law/it/':            ['Systems health', 'Phase 7', 'Integration health, sync failures, licence utilization by system, ticket volume and security posture.'],
+  '/law/integrations/':  ['Integration map', 'Phase 7', 'Every connected system with its integration method, auth type, sync cadence, last sync, record counts and field mapping.'],
+  '/law/brain/':         ['The firm brain', 'Phase 8', 'Ask anything across every connected system and get an answer that cites its sources and links to the underlying record.'],
+  '/law/admin/':         ['Administration', 'Phase 7', 'Users, the role and permission matrix, ethical wall configuration, the audit log and feature flags.'],
+  '/law/afa/':           ['Fee arrangements', 'Phase 3', 'Every non-hourly arrangement with its realized effective rate against the hourly equivalent, overrun distribution and break-even hours.'],
+};
+
+var LIVE = [
+  ['/law/', 'Firm dashboard'],
+  ['/law/revenue/', 'Revenue & realization'],
+  ['/law/clients/', 'Client book'],
+  ['/law/matters/', 'Matter register'],
+  ['/law/financials/', 'P&L and balance sheet'],
+  ['/law/lockup/', 'Lockup — WIP & AR'],
+  ['/law/rates/', 'Rates & exceptions'],
+  ['/law/budget/', 'Budget vs actual'],
+  ['/law/billing/', 'Billing & e-billing'],
+  ['/law/profitability/', 'Profitability'],
+];
+
+function render() {
+  if (!currentPersona()) return;
+  var path = window.location.pathname;
+  if (!path.endsWith('/')) path += '/';
+  var mod = MODULES[path];
+
+  var known = !!mod;
+  var title = known ? mod[0] : 'Page not found';
+  var phase = known ? mod[1] : '';
+  var blurb = known ? mod[2]
+    : 'That address does not match a module in this portal. The modules that are live today are listed below.';
+
+  var liveGrid = '<div class="overnight" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">' +
+    LIVE.map(function (l) {
+      return '<a class="ov" href="' + l[0] + '" style="text-decoration:none;color:inherit;display:block">' +
+        '<div class="ov-l">Live now</div>' +
+        '<div style="font-size:14px;font-weight:800;margin-top:5px">' + esc(l[1]) + '</div></a>';
+    }).join('') + '</div>';
+
+  var roadmap = '<div class="rank">' +
+    Object.keys(MODULES).map(function (k) { return { href: k, m: MODULES[k] }; })
+      .sort(function (a, b) { return a.m[1] === b.m[1] ? 0 : (a.m[1] < b.m[1] ? -1 : 1); })
+      .map(function (x, i) {
+        return '<div class="rk" style="cursor:default">' +
+          '<span class="n">' + String(i + 1).padStart(2, '0') + '</span>' +
+          '<span><span class="t">' + esc(x.m[0]) + '</span>' +
+          '<span class="s">' + esc(x.m[2].slice(0, 118)) + (x.m[2].length > 118 ? '…' : '') + '</span></span>' +
+          '<span class="v" style="font-size:11px;font-weight:800;color:var(--color-slate-hint)">' + esc(x.m[1]) + '</span></div>';
+      }).join('') + '</div>';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    '<div class="mast"><div>' +
+      '<div class="mast-date">' + (known ? 'Module in build · ' + esc(phase) : 'Not found') + '</div>' +
+      '<div class="mast-hello">' + esc(title) + (known ? ' is <em>next</em>.' : '') + '</div>' +
+      '<div class="mast-line">' + esc(blurb) + '</div>' +
+    '</div>' +
+    '<div class="mast-right"><span class="demo-live"><span class="dot" style="background:var(--color-amber);box-shadow:0 0 0 3px var(--color-amber-bg)"></span>' +
+      (known ? esc(phase) : 'Unknown route') + '</span>' +
+      '<a href="/law/" class="nav-cta" style="display:inline-block;padding:9px 18px;border-radius:var(--radius-sm);color:#fff;font-size:12px;font-weight:800;text-decoration:none">← Back to the dashboard</a>' +
+    '</div></div>' +
+
+    secHead('Live today', LIVE.length + ' of ' + (LIVE.length + Object.keys(MODULES).length) + ' modules') +
+    liveGrid +
+
+    secHead('In build', 'sequenced to deliver the demo in order') +
+    panel('Remaining modules', 'each reads the same shared model — no new data work', roadmap);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

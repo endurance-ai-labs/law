@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Client Book · Whitmore Vance LLP</title>
-<link rel="stylesheet" href="/law/css/theme.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/endurance.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/demo.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801b">
 </head>
 <body>
 <div id="topbar"></div>
@@ -171,7 +171,8 @@ function render() {
       'Revenue, margin, lockup, cross-sell depth and relationship strength for every client, ' +
       'joined from the ledger, the CRM and email metadata. Sorted by revenue.',
       ['e3e', 'crm', 'graph', 'wv']) +
-    '<div class="demo-kpis" style="grid-template-columns:repeat(auto-fit,minmax(205px,1fr))">' + kpis.join('') + '</div>' +
+  while (kpis.length % 4 !== 0) kpis.pop();
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
     shrinkPanel +
     panel('Client register', controls, tbl);
 }

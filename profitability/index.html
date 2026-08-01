@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Profitability · Whitmore Vance LLP</title>
-<link rel="stylesheet" href="/law/css/theme.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/endurance.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/demo.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801b">
 </head>
 <body>
 <div id="topbar"></div>
@@ -171,7 +171,8 @@ function render() {
       'Hours priced at what they cost, overhead allocated on a disclosed basis, and every matter ranked by what it actually contributed. ' +
       fmtN(loss.length) + ' active matters are underwater by ' + fmtK(Math.abs(lossTotal)) + ' — and none of them look unprofitable on a billings report.',
       ['e3e', 'adp', 'wv']) +
-    '<div class="demo-kpis" style="grid-template-columns:repeat(auto-fit,minmax(205px,1fr))">' + kpis.join('') + '</div>' +
+  while (kpis.length % 4 !== 0) kpis.pop();
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
     panel('Margin by ' + d.label.toLowerCase(), dimBtns, dimTbl, ' style="margin-bottom:18px"') +
     panel('Loss-making matters', srcChip('e3e') + ' ' + srcChip('adp') + ' · active work only', lossTbl, ' style="margin-bottom:18px"') +
     panel('How margin is calculated', 'methodology, on the page', method);

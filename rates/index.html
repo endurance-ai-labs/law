@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rates &amp; Exceptions · Whitmore Vance LLP</title>
-<link rel="stylesheet" href="/law/css/theme.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/endurance.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/demo.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801b">
 </head>
 <body>
 <div id="topbar"></div>
@@ -118,7 +118,8 @@ function render() {
       'The gap is ' + fmt$(F.rateLeak) + ' an hour, or ' + fmtK(F.rateLeak * F.hours) + ' a year. ' +
       'Setting next year\'s rates without modelling that gap is how firms raise the card and collect the same money.',
       ['e3e', 'ebill', 'wv']) +
-    '<div class="demo-kpis" style="grid-template-columns:repeat(auto-fit,minmax(205px,1fr))">' + kpis.join('') + '</div>' +
+  while (kpis.length % 4 !== 0) kpis.pop();
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
     panel('Rate increase modeler', srcChip('wv') + ' · what an increase actually nets', modeler, ' style="margin-bottom:18px"') +
     panel('Standard rate card', srcChip('e3e') + ' ' + srcChip('adp') + ' · ' + fmtN(M.timekeepers.length) + ' timekeepers', cardTbl, ' style="margin-bottom:18px"') +
     panel('Rate exception register', srcChip('e3e') + ' ' + srcChip('intapp'), excTbl);

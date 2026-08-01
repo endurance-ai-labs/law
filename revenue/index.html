@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Revenue &amp; Realization · Whitmore Vance LLP</title>
-<link rel="stylesheet" href="/law/css/theme.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/endurance.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/demo.css?v=20260801a">
-<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801a">
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801b">
 </head>
 <body>
 <div id="topbar"></div>
@@ -142,7 +142,8 @@ function render() {
       'Most firms track billings. This page tracks the gap — where the work went between the timesheet and the bank, ' +
       'with a reason code on every dollar of it.',
       ['e3e', 'ebill', 'wv']) +
-    '<div class="demo-kpis" style="grid-template-columns:repeat(auto-fit,minmax(205px,1fr))">' + kpis.join('') + '</div>' +
+  while (kpis.length % 4 !== 0) kpis.pop();
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
     panel('The leak, in order', srcChip('e3e') + ' · hover any figure for its derivation', wf, ' style="margin-bottom:18px"') +
     panel('Breakdown', dimBtns +
       ' <input type="search" class="demo-search" placeholder="Filter…" oninput="rvSetSearch(this.value)" value="' + esc(rvSearch) + '" style="min-width:150px;margin-left:8px">',

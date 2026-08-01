@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fee Arrangements · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801b">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801b">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js"></script>
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() (TDZ trap) */
+var afType = 'all';
+var afSearch = '';
+var afLimit = 40;
+
+function afSet(k, v) {
+  if (k === 'type') afType = v;
+  if (k === 'search') afSearch = (v || '').toLowerCase();
+  afLimit = 40; render();
+}
+function afMore() { afLimit += 80; render(); }
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+  if (!can('fin')) {
+    document.getElementById('root').innerHTML = hero('Fee arrangements', 'Restricted.',
+      'Fee arrangement economics require financial access.', ['e3e']);
+    return;
+  }
+  var margin = can('margin');
+
+  var all = scopeMatters(M.matters);
+  var hourly = all.filter(function (m) { return m.fee === 'hourly'; });
+  var afa = all.filter(function (m) { return m.fee !== 'hourly'; });
+
+  /* the hourly benchmark every arrangement is judged against */
+  var hourlyRate = hourly.reduce(function (s, m) { return s + m.collected; }, 0) /
+                   hourly.reduce(function (s, m) { return s + m.hours; }, 0);
+
+  /* per-type economics */
+  var byType = M.rollupMap(afa, function (m) { return m.feeLabel; });
+  Object.keys(byType).forEach(function (k) {
+    var r = byType[k];
+    r.realizedRate = r.collected / r.hours;
+    r.vsHourly = r.realizedRate / hourlyRate - 1;
+    r.hourlyEquivalent = r.hours * hourlyRate;
+    r.gap = r.collected - r.hourlyEquivalent;
+  });
+  var typeRows = Object.keys(byType).map(function (k) { return { name: k, r: byType[k] }; })
+    .sort(function (a, b) { return b.r.collected - a.r.collected; });
+
+  var afaRoll = M.rollup(afa);
+  afaRoll.realizedRate = afaRoll.collected / afaRoll.hours;
+  afaRoll.hourlyEquivalent = afaRoll.hours * hourlyRate;
+  afaRoll.gap = afaRoll.collected - afaRoll.hourlyEquivalent;
+  afaRoll.marginPct = afaRoll.margin / afaRoll.collected;
+
+  var overruns = afa.filter(function (m) { return m.budget > 0 && m.standardValue > m.budget; });
+  var overrunPct = overruns.length / Math.max(1, afa.length);
+
+  /* ---------- KPIs ---------- */
+  var kpis = [
+    kpi('Non-hourly revenue', fmtK(afaRoll.collected),
+      fmtPct(afaRoll.collected / M.rollup(all).collected * 100) + ' of all revenue', '',
+      'Collections on every arrangement that is not straight hourly|' + fmtN(afa.length) + ' matters'),
+    kpi('Matters on a fee arrangement', fmtN(afa.length),
+      fmtPct(afa.length / all.length * 100) + ' of the book' + '<div class="kpi-foot">' + tie('/law/matters/', 'Matters') + '</div>', ''),
+    kpi('Realized rate', fmt$(afaRoll.realizedRate),
+      'per hour actually worked', afaRoll.realizedRate < hourlyRate ? 'amber' : 'green',
+      'Collections ÷ hours worked on non-hourly matters|The rate the firm actually earned once the fee was fixed'),
+    kpi('Hourly benchmark', fmt$(hourlyRate),
+      'same work, billed hourly', '',
+      'Collections ÷ hours across all straight-hourly matters|This is the number every fee arrangement should be judged against'),
+    kpi('Versus hourly', (afaRoll.gap >= 0 ? '+' : '') + fmtK(afaRoll.gap),
+      afaRoll.gap >= 0 ? 'better than billing it hourly' : 'worse than billing it hourly',
+      afaRoll.gap >= 0 ? 'green' : 'amber',
+      'Collections − (hours × hourly benchmark)|What the firm gained or gave up by fixing the fee|' + fmt$2(afaRoll.gap)),
+    kpi('Arrangements over budget', fmtN(overruns.length),
+      fmtPct(overrunPct * 100) + ' ran past the agreed price', overrunPct > 0.3 ? 'amber' : ''),
+    kpi('Margin on fee arrangements', margin ? fmtPct(afaRoll.marginPct * 100) : '—',
+      margin ? '<div class="kpi-foot">' + tie('/law/profitability/', 'Profitability') + '</div>' : 'requires margin access',
+      margin && afaRoll.marginPct < 0.35 ? 'amber' : 'green'),
+    kpi('Hours at risk', fmtN(afaRoll.hours, 0),
+      'worked under a fixed price', ''),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* ---------- type comparison ---------- */
+  var typeTbl = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Arrangement</th><th class="r">Matters</th><th class="r">Hours</th>' +
+    '<th class="r">Collected</th><th class="r">Realized rate</th><th class="r">Hourly equivalent</th>' +
+    '<th class="r">Gain / give-up</th><th class="r">vs hourly</th>' + (margin ? '<th class="r">Margin</th>' : '') + '</tr></thead><tbody>' +
+    typeRows.map(function (x) {
+      var r = x.r;
+      var good = r.gap >= 0;
+      return '<tr><td class="first-sticky"><b>' + esc(x.name) + '</b></td>' +
+        '<td class="r">' + fmtN(r.matters) + '</td>' +
+        '<td class="r">' + fmtN(r.hours, 0) + '</td>' +
+        '<td class="r">' + fmtK(r.collected) + '</td>' +
+        '<td class="r"><b>' + fmt$(r.realizedRate) + '</b></td>' +
+        '<td class="r" style="color:var(--color-text-muted)">' + fmtK(r.hourlyEquivalent) + '</td>' +
+        '<td class="r" style="color:' + (good ? 'var(--color-green)' : 'var(--wv-burgundy)') + '"><b>' +
+          (good ? '+' : '') + fmtK(r.gap) + '</b></td>' +
+        '<td class="r" style="color:' + (good ? 'var(--color-green)' : 'var(--wv-burgundy)') + '">' +
+          (r.vsHourly >= 0 ? '▲ ' : '▼ ') + fmtPct(Math.abs(r.vsHourly) * 100) + '</td>' +
+        (margin ? '<td class="r">' + fmtPct(r.marginPct * 100) + '</td>' : '') + '</tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>All fee arrangements</b></td>' +
+      '<td class="r"><b>' + fmtN(afaRoll.matters) + '</b></td>' +
+      '<td class="r"><b>' + fmtN(afaRoll.hours, 0) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(afaRoll.collected) + '</b></td>' +
+      '<td class="r"><b>' + fmt$(afaRoll.realizedRate) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(afaRoll.hourlyEquivalent) + '</b></td>' +
+      '<td class="r" style="color:' + (afaRoll.gap >= 0 ? 'var(--color-green)' : 'var(--wv-burgundy)') + '"><b>' +
+        (afaRoll.gap >= 0 ? '+' : '') + fmtK(afaRoll.gap) + '</b></td>' +
+      '<td class="r"></td>' + (margin ? '<td class="r"><b>' + fmtPct(afaRoll.marginPct * 100) + '</b></td>' : '') +
+      '</tr></tfoot></table></div>' +
+    '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+      'Every arrangement is measured the only way that means anything: what the firm collected, against what the same hours would have earned at the ' +
+      'straight-hourly rate of <b>' + fmt$(hourlyRate) + '</b>. Firms price fixed fees off last year\'s fee, not off the hours the work actually takes — ' +
+      'which is why the give-up only becomes visible after the matter closes.' +
+    '</div>';
+
+  /* ---------- register ---------- */
+  var rows = afa.filter(function (m) {
+    if (afType !== 'all' && m.feeLabel !== afType) return false;
+    if (afSearch && (m.name + ' ' + m.clientName).toLowerCase().indexOf(afSearch) === -1) return false;
+    return true;
+  }).sort(function (a, b) {
+    return (a.collected - a.hours * hourlyRate) - (b.collected - b.hours * hourlyRate);
+  });
+
+  var page = rows.slice(0, afLimit);
+  var regTbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:560px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Matter</th><th>Client</th><th>Practice</th><th>Arrangement</th>' +
+    '<th class="r">Agreed price</th><th class="r">Hours</th><th class="r">Collected</th>' +
+    '<th class="r">Hourly equiv.</th><th class="r">Gain / give-up</th><th class="r">Break-even hrs</th><th>Status</th></tr></thead><tbody>' +
+    page.map(function (m) {
+      var equiv = m.hours * hourlyRate;
+      var gap = m.collected - equiv;
+      var breakEven = m.collected / hourlyRate;
+      var over = m.budget > 0 && m.standardValue > m.budget;
+      return '<tr><td class="first-sticky"><b>' + esc(m.name.slice(0, 42)) + '</b>' +
+          '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + m.id + '</div></td>' +
+        '<td style="font-size:11.5px">' + esc(m.clientName) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(m.practice) + '</td>' +
+        '<td style="font-size:11px">' + esc(m.feeLabel) + '</td>' +
+        '<td class="r">' + (m.budget > 0 ? fmtK(m.budget) : '—') + '</td>' +
+        '<td class="r">' + fmtN(m.hours, 0) + '</td>' +
+        '<td class="r">' + fmtK(m.collected) + '</td>' +
+        '<td class="r" style="color:var(--color-text-muted)">' + fmtK(equiv) + '</td>' +
+        '<td class="r" style="color:' + (gap >= 0 ? 'var(--color-green)' : 'var(--wv-burgundy)') + '"><b>' +
+          (gap >= 0 ? '+' : '') + fmtK(gap) + '</b></td>' +
+        '<td class="r" data-exp="Break-even hours|Collections ÷ hourly benchmark|' + fmt$(m.collected) + ' ÷ ' + fmt$(hourlyRate) +
+          '|Worked ' + fmtN(m.hours, 0) + ' hours">' + fmtN(breakEven, 0) + '</td>' +
+        '<td>' + (over ? pill('OVER PRICE', 'red') : gap >= 0 ? pill('AHEAD', 'green') : pill('BEHIND', 'amber')) + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rows.length) + ' of ' + fmtN(afa.length) + ' arrangements</b></td>' +
+      '<td></td><td></td><td></td>' +
+      '<td class="r"><b>' + fmtK(rows.reduce(function (s, m) { return s + m.budget; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtN(rows.reduce(function (s, m) { return s + m.hours; }, 0), 0) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(rows.reduce(function (s, m) { return s + m.collected; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(rows.reduce(function (s, m) { return s + m.hours * hourlyRate; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(rows.reduce(function (s, m) { return s + (m.collected - m.hours * hourlyRate); }, 0)) + '</b></td>' +
+      '<td></td><td></td></tr></tfoot></table></div>' +
+    (rows.length > afLimit
+      ? '<div style="text-align:center;margin-top:14px"><button onclick="afMore()" style="font:inherit;font-size:11.5px;font-weight:700;padding:9px 20px;border-radius:var(--radius-sm);cursor:pointer;border:1px solid var(--color-border);background:var(--color-bg-3);color:var(--color-cloud-whisper)">Show ' + Math.min(80, rows.length - afLimit) + ' more</button></div>'
+      : '');
+
+  var types = ['all'].concat(typeRows.map(function (x) { return x.name; }));
+  var controls =
+    '<select onchange="afSet(\'type\',this.value)" style="font:inherit;font-size:11.5px;font-weight:700;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--color-border);background:var(--color-bg-3);color:var(--color-cloud-whisper)">' +
+    types.map(function (t) { return '<option value="' + esc(t) + '"' + (t === afType ? ' selected' : '') + '>' + (t === 'all' ? 'All arrangements' : esc(t)) + '</option>'; }).join('') + '</select>' +
+    ' <input type="search" class="demo-search" placeholder="Search…" oninput="afSet(\'search\',this.value)" value="' + esc(afSearch) + '" style="min-width:180px;margin-left:6px">' +
+    ' <span class="k" style="margin-left:10px">worst give-up first</span>';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('Fee arrangements — ' + M.asOfLabel,
+      afaRoll.gap >= 0
+        ? 'Fixed fees earned <em>' + fmtK(afaRoll.gap) + ' more</em> than the hours would have.'
+        : 'Fixed fees gave up <em>' + fmtK(Math.abs(afaRoll.gap)) + '</em> against the hours.',
+      fmtN(afa.length) + ' matters — ' + fmtPct(afa.length / all.length * 100) + ' of the book — are priced on something other than time. ' +
+      'This page judges each one against what the same hours would have collected at the straight-hourly rate.',
+      ['e3e', 'adp', 'wv']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+    secHead('By arrangement type', 'benchmarked at ' + fmt$(hourlyRate) + ' per hour') +
+    panel('Arrangement economics', srcChip('e3e') + ' ' + srcChip('wv'), typeTbl) +
+    secHead('Every arrangement', fmtN(rows.length) + ' shown') +
+    panel('Register', controls, regTbl);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>
