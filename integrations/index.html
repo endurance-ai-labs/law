@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Integration Map · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801d">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/analytics.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() (TDZ trap) */
+var inTier = 'all';
+var inCat = 'all';
+var inSearch = '';
+
+function inSet(k, v) {
+  if (k === 'tier') inTier = v;
+  if (k === 'cat') inCat = v;
+  if (k === 'search') inSearch = (v || '').toLowerCase();
+  render();
+}
+
+/* ============================================================
+   The firm's connected stack.
+   tier 1 = documented public REST · 2 = enterprise/partner-gated
+   3 = no API — DB replica, scheduled export or RPA
+   Vendor and product names are real; every figure is fictional.
+   ============================================================ */
+var CONNECTORS = [
+  { sys: 'Elite 3E', vendor: 'Thomson Reuters', cat: 'Practice management', tier: 2,
+    method: 'Reporting replica (SQL) + OData', auth: 'Service account, read-only', cadence: 'Nightly 02:00 + 15-min delta',
+    entities: 'Clients · Matters · Timekeepers · Rates · Time · Costs · Invoices · Payments · GL · Trust',
+    records: 4187442, health: 'ok', last: '6 min ago', chip: 'e3e',
+    note: 'System of record for time and money. Read-only — nothing is written back.' },
+  { sys: 'iManage Work', vendor: 'iManage', cat: 'Document management', tier: 1,
+    method: 'REST API + webhooks', auth: 'OAuth 2.0, service principal', cadence: 'Event-driven',
+    entities: 'Workspaces · Documents · Versions · Authorship · Activity · Retention class',
+    records: 8914233, health: 'ok', last: '2 min ago', chip: 'iman',
+    note: 'Metadata only. Document content never leaves the DMS.' },
+  { sys: 'Serengeti Tracker', vendor: 'Bottomline Legal-X', cat: 'Client e-billing', tier: 2,
+    method: 'LEDES 1998B upload + portal API', auth: 'Per-client credentials', cadence: 'On submission + daily status poll',
+    entities: 'Submissions · Line rejections · Reason codes · Appeals · Payment status',
+    records: 214880, health: 'ok', last: '41 min ago', chip: 'ebill' },
+  { sys: 'TyMetrix 360', vendor: 'Wolters Kluwer ELM', cat: 'Client e-billing', tier: 2,
+    method: 'LEDES + portal API', auth: 'Per-client credentials', cadence: 'On submission + daily poll',
+    entities: 'Submissions · Rejections · Guideline terms · Rate approvals',
+    records: 168204, health: 'warn', last: '3 hrs ago', chip: 'ebill',
+    note: 'Two client portals returned a rate-limit error on the last poll; retry scheduled.' },
+  { sys: 'CounselLink', vendor: 'LexisNexis', cat: 'Client e-billing', tier: 2,
+    method: 'Portal API', auth: 'Per-client credentials', cadence: 'Daily',
+    entities: 'Submissions · Rejections · Accruals · Matter budgets',
+    records: 96117, health: 'ok', last: '2 hrs ago', chip: 'ebill' },
+  { sys: 'Intapp Intake / Conflicts / Walls', vendor: 'Intapp', cat: 'Risk & compliance', tier: 2,
+    method: 'REST API (partner programme)', auth: 'OAuth 2.0 client credentials', cadence: 'Event-driven',
+    entities: 'Intake requests · Conflict hits · Waivers · Wall membership · Engagement terms',
+    records: 71980, health: 'ok', last: '11 min ago', chip: 'intapp',
+    note: 'Wall membership drives enforcement in this portal — a screened matter is removed before any figure is computed.' },
+  { sys: 'ADP Workforce Now', vendor: 'ADP', cat: 'Payroll & HR', tier: 1,
+    method: 'REST API', auth: 'OAuth 2.0 + mTLS', cadence: 'Nightly',
+    entities: 'Headcount · Class year · Compensation bands · Cost rates · Benefits load',
+    records: 640, health: 'ok', last: '9 hrs ago', chip: 'adp',
+    note: 'Cost rates come from here. Without them there is no matter profitability.' },
+  { sys: 'Microsoft Graph', vendor: 'Microsoft 365', cat: 'Collaboration', tier: 1,
+    method: 'Graph API + change notifications', auth: 'OAuth 2.0, app-only, scoped', cadence: 'Event-driven',
+    entities: 'Calendar hours · Meeting attendance · Relationship recency · Directory',
+    records: 2740115, health: 'ok', last: '4 min ago', chip: 'graph',
+    note: 'Metadata only. No message bodies are read, stored or indexed — the consent grant excludes Mail.Read.' },
+  { sys: 'Docket Alarm', vendor: 'vLex Fastcase', cat: 'Court data', tier: 1,
+    method: 'REST API', auth: 'API key', cadence: 'Hourly',
+    entities: 'Dockets · Filings · Rules-computed deadlines · Judge · Opposing counsel',
+    records: 331207, health: 'ok', last: '38 min ago', chip: 'docket' },
+  { sys: 'CompuLaw', vendor: 'Aderant', cat: 'Docketing & calendaring', tier: 2,
+    method: 'Scheduled export (SFTP)', auth: 'Key-based SFTP', cadence: 'Twice daily',
+    entities: 'Rule sets · Computed dates · Responsible attorney assignments',
+    records: 88450, health: 'ok', last: '5 hrs ago', chip: 'docket' },
+  { sys: 'RelativityOne', vendor: 'Relativity', cat: 'eDiscovery', tier: 1,
+    method: 'REST API', auth: 'OAuth 2.0 bearer', cadence: 'Daily',
+    entities: 'Workspaces · Volumes ingested · Review throughput · Productions · Hosting spend',
+    records: 41288, health: 'ok', last: '7 hrs ago', chip: 'rel' },
+  { sys: 'Everlaw', vendor: 'Everlaw', cat: 'eDiscovery', tier: 1,
+    method: 'REST API', auth: 'API key', cadence: 'Daily',
+    entities: 'Projects · Documents reviewed · Reviewer productivity',
+    records: 12904, health: 'ok', last: '7 hrs ago', chip: 'rel' },
+  { sys: 'InterAction+', vendor: 'LexisNexis', cat: 'CRM & business development', tier: 2,
+    method: 'REST API', auth: 'OAuth 2.0', cadence: 'Nightly',
+    entities: 'Contacts · Relationships · Pitches · Origination credits · Activity',
+    records: 508731, health: 'ok', last: '9 hrs ago', chip: 'crm' },
+  { sys: 'Intapp Time', vendor: 'Intapp', cat: 'Time capture', tier: 2,
+    method: 'REST API', auth: 'OAuth 2.0', cadence: '15-min delta',
+    entities: 'Contemporaneous entries · Passive capture · Delinquency by timekeeper',
+    records: 1402887, health: 'ok', last: '13 min ago', chip: 'e3e' },
+  { sys: 'Chrome River', vendor: 'Emburse', cat: 'Expense', tier: 1,
+    method: 'REST API', auth: 'OAuth 2.0', cadence: 'Nightly',
+    entities: 'Expense reports · Client disbursements · Recoverability flags',
+    records: 74310, health: 'ok', last: '9 hrs ago', chip: 'wv' },
+  { sys: 'nQueue', vendor: 'nQueue', cat: 'Cost recovery', tier: 2,
+    method: 'Scheduled export', auth: 'SFTP', cadence: 'Daily',
+    entities: 'Print · Copy · Scan · Research cost allocation by matter',
+    records: 967440, health: 'ok', last: '10 hrs ago', chip: 'wv' },
+  { sys: 'Entra ID', vendor: 'Microsoft', cat: 'Identity', tier: 1,
+    method: 'Graph API', auth: 'App-only, scoped', cadence: 'Event-driven',
+    entities: 'Users · Groups · Sign-in logs · Role assignments',
+    records: 640, health: 'ok', last: '1 min ago', chip: 'graph',
+    note: 'Single sign-on and the permission model behind every role in this portal.' },
+  { sys: 'Bank feed (BAI2)', vendor: 'Firm bank', cat: 'Treasury', tier: 2,
+    method: 'BAI2 file feed', auth: 'Key-based SFTP', cadence: 'Daily',
+    entities: 'Operating and trust account balances · Cleared items',
+    records: 31905, health: 'ok', last: '11 hrs ago', chip: 'e3e',
+    note: 'The third leg of the trust three-way reconciliation.' },
+  { sys: 'Westlaw / Practical Law', vendor: 'Thomson Reuters', cat: 'Research', tier: 2,
+    method: 'Usage export', auth: 'Account credentials', cadence: 'Monthly',
+    entities: 'Research spend by matter · Seat utilization · Recoverability',
+    records: 22187, health: 'warn', last: '22 days ago', chip: 'wv',
+    note: 'Monthly-only feed. Research recoverability lags the billing cycle by up to four weeks.' },
+  { sys: 'Chambers / Legal 500', vendor: 'Directories', cat: 'Rankings', tier: 3,
+    method: 'Manual submission tracking', auth: '—', cadence: 'Submission cycle',
+    entities: 'Submissions · Deadlines · Rankings achieved',
+    records: 184, health: 'manual', last: 'manual entry', chip: 'crm',
+    note: 'No API exists. Tracked in-portal so the deadlines stop living in one person’s calendar.' },
+  { sys: 'Peer Monitor', vendor: 'Thomson Reuters', cat: 'Benchmarking', tier: 3,
+    method: 'Subscription report (PDF)', auth: '—', cadence: 'Quarterly',
+    entities: 'Peer rates · Demand · Realization benchmarks',
+    records: 0, health: 'manual', last: 'Q2 2026', chip: 'wv',
+    note: 'Report-only. Keyed in quarterly so benchmarks sit beside the firm’s own numbers.' },
+];
+
+var TIERS = {
+  1: ['Tier 1 — documented public REST', 'var(--color-green)', 'Self-serve APIs with published documentation. Fastest to connect and cheapest to maintain.'],
+  2: ['Tier 2 — enterprise or partner-gated', 'var(--color-amber)', 'An API exists but needs a vendor agreement, a partner programme or a reporting replica. Most of a law firm’s stack sits here.'],
+  3: ['Tier 3 — no API', 'var(--wv-burgundy)', 'Report, export or manual entry. Connected by scheduled file drop or keyed in — still better inside one system than in someone’s inbox.'],
+};
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+
+  var rows = CONNECTORS.filter(function (c) {
+    if (inTier !== 'all' && String(c.tier) !== inTier) return false;
+    if (inCat !== 'all' && c.cat !== inCat) return false;
+    if (inSearch && (c.sys + ' ' + c.vendor + ' ' + c.cat + ' ' + c.entities).toLowerCase().indexOf(inSearch) === -1) return false;
+    return true;
+  });
+
+  var totalRecords = CONNECTORS.reduce(function (s, c) { return s + c.records; }, 0);
+  var byTier = { 1: 0, 2: 0, 3: 0 };
+  CONNECTORS.forEach(function (c) { byTier[c.tier]++; });
+  var warn = CONNECTORS.filter(function (c) { return c.health === 'warn'; });
+  var cats = [...new Set(CONNECTORS.map(function (c) { return c.cat; }))].sort();
+
+  var kpis = [
+    kpi('Connected systems', fmtN(CONNECTORS.length), 'across ' + cats.length + ' categories', '',
+      'Every system feeding the portal|Each panel in the portal names which of these it drew from'),
+    kpi('Records under management', fmtBig(totalRecords).replace('$', ''), 'synced into one model', '',
+      'Sum of records pulled from every connector|' + fmtN(totalRecords)),
+    kpi('Clean public APIs', fmtN(byTier[1]), 'tier 1 — fastest to connect', 'green'),
+    kpi('Enterprise-gated', fmtN(byTier[2]), 'tier 2 — vendor agreement needed', ''),
+    kpi('No API at all', fmtN(byTier[3]), 'tier 3 — export or manual', 'amber'),
+    kpi('Feeds needing attention', fmtN(warn.length), warn.length ? esc(warn[0].sys) + ' + ' + (warn.length - 1) + ' more' : 'all healthy',
+      warn.length ? 'amber' : 'green'),
+    kpi('Write-backs configured', '0', 'read-only by default', 'green',
+      'Nothing is written back into a system of record unless the firm asks for it|The portal reads; it does not mutate'),
+    kpi('Systems to answer one matter question', fmtN(6), 'before this portal existed', 'amber',
+      'Practice management, the DMS, the docketing system, the client portal, payroll and the CRM|Every one of them had to be opened separately'),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* tier legend */
+  var legend = '<div class="overnight" style="grid-template-columns:repeat(auto-fit,minmax(250px,1fr))">' +
+    [1, 2, 3].map(function (t) {
+      return '<div class="ov" style="border-left:3px solid ' + TIERS[t][1] + '">' +
+        '<div class="ov-l">' + esc(TIERS[t][0]) + '</div>' +
+        '<div class="ov-v">' + byTier[t] + ' system' + (byTier[t] === 1 ? '' : 's') + '</div>' +
+        '<div class="ov-d">' + esc(TIERS[t][2]) + '</div></div>';
+    }).join('') + '</div>';
+
+  /* connector table */
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:660px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">System</th><th>Category</th><th>Tier</th><th>Integration method</th>' +
+    '<th>Authentication</th><th>Cadence</th><th class="r">Records</th><th>Last sync</th><th>Status</th></tr></thead><tbody>' +
+    rows.map(function (c) {
+      var tone = c.health === 'ok' ? 'green' : c.health === 'warn' ? 'amber' : 'blue';
+      var label = c.health === 'ok' ? 'HEALTHY' : c.health === 'warn' ? 'ATTENTION' : 'MANUAL';
+      return '<tr><td class="first-sticky"><b>' + esc(c.sys) + '</b>' +
+          '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + esc(c.vendor) + '</div>' +
+          (c.note ? '<div style="font-size:10.5px;color:var(--color-text-muted);margin-top:4px;max-width:38ch;line-height:1.5">' + esc(c.note) + '</div>' : '') +
+        '</td>' +
+        '<td style="font-size:11.5px">' + esc(c.cat) + '</td>' +
+        '<td><span style="font-size:10px;font-weight:800;color:' + TIERS[c.tier][1] + '">T' + c.tier + '</span></td>' +
+        '<td style="font-size:11.5px">' + esc(c.method) + '</td>' +
+        '<td style="font-size:11px;color:var(--color-text-muted)">' + esc(c.auth) + '</td>' +
+        '<td style="font-size:11px">' + esc(c.cadence) + '</td>' +
+        '<td class="r">' + (c.records ? fmtN(c.records) : '—') + '</td>' +
+        '<td style="font-size:11px;color:var(--color-text-muted)">' + esc(c.last) + '</td>' +
+        '<td>' + pill(label, tone) + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rows.length) + ' of ' + fmtN(CONNECTORS.length) + ' systems</b></td>' +
+      '<td></td><td></td><td></td><td></td><td></td>' +
+      '<td class="r"><b>' + fmtN(rows.reduce(function (s, c) { return s + c.records; }, 0)) + '</b></td>' +
+      '<td></td><td></td></tr></tfoot></table></div>';
+
+  /* field mapping preview for the spine system */
+  var mapping = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Source field</th><th>System</th><th>Portal field</th><th>Used by</th></tr></thead><tbody>' +
+    [
+      ['NBMatter.MattIndex', 'Elite 3E', 'matter.id', 'Every page'],
+      ['NBMatter.MattName', 'Elite 3E', 'matter.name', 'Matter register · Exhibit builder'],
+      ['NBClient.ClientName', 'Elite 3E', 'client.name', 'Client book'],
+      ['BillTrans.WorkAmt', 'Elite 3E', 'matter.standardValue', 'Revenue & realization'],
+      ['BillTrans.BillAmt', 'Elite 3E', 'matter.billed', 'Revenue · Billing'],
+      ['CashReceipt.Amount', 'Elite 3E', 'matter.collected', 'Everything downstream'],
+      ['TimeCard.WorkHrs', 'Intapp Time', 'matter.hours', 'Rates · Effort metrics'],
+      ['Worker.HourlyCost', 'ADP', 'timekeeper.costRate', 'Profitability — no cost rate, no margin'],
+      ['workspace.activity_date', 'iManage', 'matter.lastDocActivity', 'Matter workspace'],
+      ['rejection.reason_code', 'E-billing portals', 'invoice.rejectReason', 'Billing rejection taxonomy'],
+      ['wall.member_id', 'Intapp Walls', 'persona.walled', 'Ethical wall enforcement'],
+      ['event.computed_due', 'Docket Alarm', 'docket.dueDate', 'Deadline command centre'],
+    ].map(function (r) {
+      return '<tr><td class="first-sticky" style="font-size:11.5px"><b>' + esc(r[0]) + '</b></td>' +
+        '<td style="font-size:11.5px">' + esc(r[1]) + '</td>' +
+        '<td style="font-size:11.5px;color:var(--color-blue)">' + esc(r[2]) + '</td>' +
+        '<td style="font-size:11px;color:var(--color-text-muted)">' + esc(r[3]) + '</td></tr>';
+    }).join('') + '</tbody></table></div>' +
+    '<div style="margin-top:13px;padding-top:12px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+      'Twelve of roughly four hundred mapped fields. The mapping is the actual work of an integration — and the reason a firm cannot ' +
+      'buy this off a shelf. Every field above is read-only.' +
+    '</div>';
+
+  var controls =
+    '<select class="flt' + (inTier !== 'all' ? ' on' : '') + '" onchange="inSet(\'tier\',this.value)">' +
+      '<option value="all">All tiers</option><option value="1"' + (inTier === '1' ? ' selected' : '') + '>Tier 1 — public REST</option>' +
+      '<option value="2"' + (inTier === '2' ? ' selected' : '') + '>Tier 2 — gated</option>' +
+      '<option value="3"' + (inTier === '3' ? ' selected' : '') + '>Tier 3 — no API</option></select> ' +
+    '<select class="flt' + (inCat !== 'all' ? ' on' : '') + '" onchange="inSet(\'cat\',this.value)">' +
+      '<option value="all">All categories</option>' +
+      cats.map(function (c) { return '<option value="' + esc(c) + '"' + (c === inCat ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') +
+    '</select>' +
+    ' <input type="search" class="flt-q" placeholder="Search systems, vendors, data…" oninput="inSet(\'search\',this.value)" value="' + esc(inSearch) + '" style="min-width:220px">';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    hero('Integration map — ' + M.asOfLabel,
+      fmtN(CONNECTORS.length) + ' systems. <em>One model.</em>',
+      'Every source the portal reads, how it connects, what it carries and when it last ran. ' +
+      'Nothing is written back — the portal reads its sources and leaves them as the systems of record.',
+      ['e3e', 'iman', 'ebill', 'intapp', 'adp', 'graph', 'docket', 'rel', 'crm', 'wv']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    secHead('How hard each one is to connect', 'the honest version') +
+    legend +
+
+    secHead('The stack', fmtN(rows.length) + ' of ' + fmtN(CONNECTORS.length) + ' shown') +
+    panel('Connected systems', controls, tbl, ' style="margin-bottom:18px"') +
+
+    secHead('Field mapping', 'a sample of the real work') +
+    panel('Source → portal', srcChip('e3e') + ' ' + srcChip('adp') + ' ' + srcChip('iman'), mapping);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

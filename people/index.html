@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roster &amp; Utilization · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801d">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js"></script>
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/analytics.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() (TDZ trap) */
+var pxClass = 'all';
+var pxOffice = 'all';
+var pxPractice = 'all';
+var pxBand = 'all';
+var pxSearch = '';
+var pxSort = 'util';
+var pxLimit = 50;
+
+function pxSet(k, v) {
+  if (k === 'class') pxClass = v;
+  if (k === 'office') pxOffice = v;
+  if (k === 'practice') pxPractice = v;
+  if (k === 'band') pxBand = v;
+  if (k === 'search') pxSearch = (v || '').toLowerCase();
+  if (k === 'sort') pxSort = v;
+  pxLimit = 50; render();
+}
+function pxMore() { pxLimit += 100; render(); }
+
+/* per-timekeeper hours, derived deterministically from their matters */
+function ROSTER() {
+  var M = window.MODEL;
+  var mine = scopeMatters(M.matters);
+  /* distribute each practice's hours across its timekeepers by target and a seeded spread */
+  var byPrac = {};
+  mine.forEach(function (m) { byPrac[m.practice] = (byPrac[m.practice] || 0) + m.hours; });
+
+  var groups = {};
+  M.timekeepers.forEach(function (t) { (groups[t.practice] = groups[t.practice] || []).push(t); });
+
+  var out = [];
+  Object.keys(groups).forEach(function (prac) {
+    var pool = groups[prac];
+    var poolHours = byPrac[prac] || 0;
+    /* seeded weight per person so the distribution has a real spread, not a flat average */
+    var weights = pool.map(function (t) {
+      var seed = parseInt(t.id.slice(2), 10);
+      return t.target * (0.55 + ((seed * 37) % 100) / 110);
+    });
+    var wSum = weights.reduce(function (a, b) { return a + b; }, 0);
+    pool.forEach(function (t, i) {
+      var hrs = poolHours * (weights[i] / wSum);
+      out.push({ t: t, hours: hrs, util: hrs / t.target });
+    });
+  });
+  return out;
+}
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+  var money = can('fin'), margin = can('margin');
+
+  var roster = ROSTER();
+  var band = function (u) {
+    return u >= 1.10 ? 'Over 110%' : u >= 0.95 ? '95–110%' : u >= 0.80 ? '80–95%' : u >= 0.65 ? '65–80%' : 'Under 65%';
+  };
+
+  var rows = roster.filter(function (x) {
+    var t = x.t;
+    if (pxClass !== 'all' && t.cls !== pxClass) return false;
+    if (pxOffice !== 'all' && t.office !== pxOffice) return false;
+    if (pxPractice !== 'all' && t.practice !== pxPractice) return false;
+    if (pxBand !== 'all' && band(x.util) !== pxBand) return false;
+    if (pxSearch && (t.name + ' ' + t.practice + ' ' + t.clsLabel).toLowerCase().indexOf(pxSearch) === -1) return false;
+    return true;
+  });
+
+  var sorters = {
+    util:    function (a, b) { return b.util - a.util; },
+    utilAsc: function (a, b) { return a.util - b.util; },
+    hours:   function (a, b) { return b.hours - a.hours; },
+    rate:    function (a, b) { return b.t.rate - a.t.rate; },
+    delinq:  function (a, b) { return b.t.delinquentDays - a.t.delinquentDays; },
+  };
+  rows.sort(sorters[pxSort] || sorters.util);
+
+  var over = roster.filter(function (x) { return x.util >= 1.10; });
+  var under = roster.filter(function (x) { return x.util < 0.65; });
+  var delinq = M.timekeepers.filter(function (t) { return t.delinquentDays > 7; });
+  var totalHours = roster.reduce(function (s, x) { return s + x.hours; }, 0);
+  var totalTarget = M.timekeepers.reduce(function (s, t) { return s + t.target; }, 0);
+
+  /* the distribution — the point of the page */
+  var bands = ['Over 110%', '95–110%', '80–95%', '65–80%', 'Under 65%'];
+  var bandCounts = bands.map(function (b) { return roster.filter(function (x) { return band(x.util) === b; }).length; });
+
+  var kpis = [
+    kpi('Firm utilization', fmtPct(totalHours / totalTarget * 100), 'the average everyone quotes', '',
+      'Billable hours ÷ target hours|' + fmtN(totalHours, 0) + ' ÷ ' + fmtN(totalTarget, 0) + '|An average that hides the spread below'),
+    kpi('Over 110% of target', fmtN(over.length), 'at burnout risk', over.length > 40 ? 'amber' : '',
+      'People materially above target|The average says the firm is fine; these people are not'),
+    kpi('Under 65% of target', fmtN(under.length), 'capacity sitting idle', under.length > 40 ? 'amber' : '',
+      'People materially below target|Capacity available while other groups turn work away'),
+    kpi('Spread', fmtPct((Math.max.apply(null, roster.map(function (x) { return x.util; })) -
+                          Math.min.apply(null, roster.map(function (x) { return x.util; }))) * 100),
+      'highest minus lowest', 'amber',
+      'The range of utilization across the firm|A single average cannot represent this'),
+    kpi('Timekeepers', fmtN(M.timekeepers.length), fmtN(M.firm.lawyers) + ' lawyers · ' + fmtN(M.firm.headcount) + ' people', ''),
+    kpi('Time-entry delinquency', fmtN(delinq.length), 'more than 7 days behind', delinq.length ? 'amber' : 'green',
+      'Reconstructed time is systematically lower than time entered the same day|Source: Intapp Time'),
+    kpi('Leverage', M.firm.leverage.toFixed(2), 'non-partner hours per partner hour', ''),
+    kpi('Equity partners', fmtN(M.firm.partners), 'of ' + fmtN(M.firm.lawyers) + ' lawyers', ''),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* distribution table */
+  var dist = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Utilization band</th><th class="r">People</th><th class="r">Share</th>' +
+    '<th class="r">Hours</th><th>Reading</th></tr></thead><tbody>' +
+    bands.map(function (b, i) {
+      var inBand = roster.filter(function (x) { return band(x.util) === b; });
+      var hrs = inBand.reduce(function (s, x) { return s + x.hours; }, 0);
+      var read = i === 0 ? 'Sustained overwork — the attrition risk sits here'
+        : i === 1 ? 'Where the firm wants everyone'
+        : i === 2 ? 'Healthy but with room'
+        : i === 3 ? 'Under-used — should be taking work from the band above'
+        : 'Materially idle while other groups turn work away';
+      var tone = i === 0 ? 'red' : i === 1 ? 'green' : i === 4 ? 'amber' : '';
+      return '<tr><td class="first-sticky"><b>' + b + '</b></td>' +
+        '<td class="r"><b>' + fmtN(bandCounts[i]) + '</b></td>' +
+        '<td class="r">' + fmtPct(bandCounts[i] / roster.length * 100) + '</td>' +
+        '<td class="r">' + fmtN(hrs, 0) + '</td>' +
+        '<td>' + (tone ? pill(read, tone) : '<span style="font-size:11.5px;color:var(--color-text-muted)">' + read + '</span>') + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>All timekeepers</b></td>' +
+      '<td class="r"><b>' + fmtN(roster.length) + '</b></td><td class="r">100.0%</td>' +
+      '<td class="r"><b>' + fmtN(totalHours, 0) + '</b></td><td></td></tr></tfoot></table></div>' +
+    '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+      'The firm reports <b>' + fmtPct(totalHours / totalTarget * 100) + '</b> utilization. That single number describes almost nobody: ' +
+      '<b>' + fmtN(over.length) + '</b> people are above 110% of target while <b>' + fmtN(under.length) + '</b> are below 65%. ' +
+      'Staffing decisions made off the average will keep loading the first group and keep missing the second. ' + tie('/law/capacity/', 'Capacity planning') +
+    '</div>';
+
+  /* roster */
+  var page = rows.slice(0, pxLimit);
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:620px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Timekeeper</th><th>Class</th><th>Practice</th><th>Office</th>' +
+    '<th class="r">Class year</th><th class="r">Hours</th><th class="r">Target</th><th class="r">Utilization</th>' +
+    (money ? '<th class="r">Std rate</th>' : '') + (margin ? '<th class="r">Cost/hr</th><th class="r">Spread</th>' : '') +
+    '<th class="r">Time behind</th></tr></thead><tbody>' +
+    page.map(function (x) {
+      var t = x.t;
+      var off = M.offices.find(function (o) { return o.id === t.office; });
+      var uTone = x.util >= 1.10 ? 'var(--color-red)' : x.util < 0.65 ? 'var(--color-amber)' : x.util >= 0.95 ? 'var(--color-green)' : '';
+      return '<tr><td class="first-sticky"><b>' + esc(t.name) + '</b>' +
+          '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + t.id + '</div></td>' +
+        '<td style="font-size:11.5px">' + esc(t.clsLabel) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(t.practice) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(off ? off.name : t.office) + '</td>' +
+        '<td class="r">' + (t.classYear || '—') + '</td>' +
+        '<td class="r">' + fmtN(x.hours, 0) + '</td>' +
+        '<td class="r" style="color:var(--color-text-muted)">' + fmtN(t.target, 0) + '</td>' +
+        '<td class="r" style="color:' + uTone + '"><b>' + fmtPct(x.util * 100) + '</b></td>' +
+        (money ? '<td class="r">' + fmt$(t.rate) + '</td>' : '') +
+        (margin ? '<td class="r" style="color:var(--color-text-muted)">' + fmt$(t.costRate) + '</td>' +
+                  '<td class="r" style="color:var(--color-green)">' + fmtPct((1 - t.costRate / t.rate) * 100) + '</td>' : '') +
+        '<td class="r" style="color:' + (t.delinquentDays > 7 ? 'var(--color-amber)' : 'var(--color-slate-hint)') + '">' +
+          t.delinquentDays.toFixed(1) + 'd</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rows.length) + ' of ' + fmtN(roster.length) + '</b></td>' +
+      '<td></td><td></td><td></td><td></td>' +
+      '<td class="r"><b>' + fmtN(rows.reduce(function (s, x) { return s + x.hours; }, 0), 0) + '</b></td>' +
+      '<td class="r"><b>' + fmtN(rows.reduce(function (s, x) { return s + x.t.target; }, 0), 0) + '</b></td>' +
+      '<td class="r"><b>' + fmtPct(rows.reduce(function (s, x) { return s + x.hours; }, 0) /
+                                    Math.max(1, rows.reduce(function (s, x) { return s + x.t.target; }, 0)) * 100) + '</b></td>' +
+      (money ? '<td></td>' : '') + (margin ? '<td></td><td></td>' : '') + '<td></td></tr></tfoot></table></div>' +
+    (rows.length > pxLimit
+      ? '<div style="text-align:center;margin-top:14px"><button class="fchip link" onclick="pxMore()" style="padding:9px 20px">Show ' + Math.min(100, rows.length - pxLimit) + ' more</button></div>'
+      : '');
+
+  var sel = function (key, cur, opts) {
+    return '<select class="flt' + (cur !== 'all' ? ' on' : '') + '" onchange="pxSet(\'' + key + '\',this.value)">' +
+      opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === cur ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') +
+      '</select>';
+  };
+  var controls =
+    sel('class', pxClass, [['all', 'All classes']].concat(M.tkClasses.map(function (c) { return [c.id, c.label]; }))) + ' ' +
+    sel('practice', pxPractice, [['all', 'All practices']].concat(M.practices.map(function (p) { return [p.name, p.name]; }))) + ' ' +
+    sel('office', pxOffice, [['all', 'All offices']].concat(M.offices.map(function (o) { return [o.id, o.name]; }))) + ' ' +
+    sel('band', pxBand, [['all', 'All utilization bands']].concat(bands.map(function (b) { return [b, b]; }))) + ' ' +
+    sel('sort', pxSort, [['util', 'Sort: most utilized'], ['utilAsc', 'Sort: least utilized'], ['hours', 'Sort: hours'],
+                          ['rate', 'Sort: rate'], ['delinq', 'Sort: most delinquent']]) +
+    ' <input type="search" class="flt-q" placeholder="Search people…" oninput="pxSet(\'search\',this.value)" value="' + esc(pxSearch) + '" style="min-width:180px">';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('Roster &amp; utilization — ' + M.asOfLabel,
+      'The average is <em>' + fmtPct(totalHours / totalTarget * 100) + '</em>. Almost nobody is.',
+      fmtN(over.length) + ' people are above 110% of target while ' + fmtN(under.length) + ' are below 65%. ' +
+      'Utilization reported as a single number is the reason both groups stay where they are.',
+      ['e3e', 'adp', 'wv']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    secHead('The distribution', 'not the average') +
+    panel('Utilization bands', srcChip('e3e') + ' ' + srcChip('adp'), dist, ' style="margin-bottom:18px"') +
+
+    secHead('Everyone', fmtN(rows.length) + ' of ' + fmtN(roster.length) + ' shown') +
+    panel('Roster', controls, tbl, ' style="margin-bottom:18px"') +
+
+    panel('Utilization by practice group', srcChip('e3e'),
+      '<div class="demo-chart" style="height:300px"><canvas id="ch-px"></canvas></div>');
+
+  drawPx(roster);
+}
+
+function drawPx(roster) {
+  var el = document.getElementById('ch-px');
+  if (!el || typeof Chart === 'undefined') return;
+  var M = window.MODEL;
+  var light = document.documentElement.getAttribute('data-theme') === 'light';
+  var text = light ? '#5b6472' : '#a2a2ac';
+  var pracs = M.practices.map(function (p) { return p.name; });
+  var data = pracs.map(function (p) {
+    var inP = roster.filter(function (x) { return x.t.practice === p; });
+    var h = inP.reduce(function (s, x) { return s + x.hours; }, 0);
+    var tg = inP.reduce(function (s, x) { return s + x.t.target; }, 0);
+    return tg ? h / tg * 100 : 0;
+  });
+  new Chart(el, {
+    type: 'bar',
+    data: { labels: pracs, datasets: [{ label: 'Utilization', data: data,
+      backgroundColor: data.map(function (v) { return v >= 95 ? (light ? '#4f7d5d' : '#6FA57E') : v < 75 ? (light ? '#b98a36' : '#C99245') : (light ? '#2b4a8b' : '#6d8fd8'); }),
+      borderWidth: 0 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: function (c) { return fmtPct(c.parsed.x); } } } },
+      scales: { x: { grid: { color: light ? 'rgba(27,34,48,.08)' : 'rgba(255,255,255,.07)' },
+                     ticks: { color: text, font: { size: 10 }, callback: function (v) { return v + '%'; } } },
+                y: { grid: { display: false }, ticks: { color: text, font: { size: 10.5 } } } } },
+  });
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

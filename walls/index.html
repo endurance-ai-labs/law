@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ethical Walls · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801d">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/analytics.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+function render() {
+  var M = window.MODEL;
+  var me = currentPersona();
+  if (!me) return;
+  if (!can('risk')) {
+    document.getElementById('root').innerHTML = hero('Ethical walls', 'Restricted.',
+      'The wall register is visible to risk and compliance roles. The enforcement itself applies to everyone — ' +
+      'if you are screened from a matter it is already absent from every figure you see.', ['intapp']);
+    return;
+  }
+
+  var walledIds = M.walledMatters;
+  var walled = walledIds.map(function (id) { return M.matterById[id]; }).filter(Boolean);
+  var screenedPeople = PERSONAS.filter(function (p) { return p.walled; });
+
+  /* the audit log — deterministic, derived from the wall itself */
+  var log = walled.length ? [
+    ['2026-03-14 09:12', 'Marcus Oyelaran', 'General Counsel', 'Screen erected', walled[0].id, 'ok',
+     'Lateral hire conflict identified at intake. Screen approved and members notified.'],
+    ['2026-03-14 09:14', 'System', 'Intapp Walls', 'Members added', walled[0].id, 'ok',
+     '1 timekeeper screened. Matter removed from their population in every downstream system.'],
+    ['2026-04-02 16:41', 'Theodore Nakashima', 'Practice Group Leader — Litigation', 'Access attempt', walled[0].id, 'blocked',
+     'Opened the matter register. Matter absent from results; attempt recorded.'],
+    ['2026-05-19 11:07', 'Theodore Nakashima', 'Practice Group Leader — Litigation', 'Access attempt', walled[0].id, 'blocked',
+     'Direct URL to the matter workspace. Access denied.'],
+    ['2026-06-08 08:33', 'Marcus Oyelaran', 'General Counsel', 'Quarterly attestation', walled[0].id, 'ok',
+     'Screen reviewed and confirmed still required. Next review 09-08-2026.'],
+    ['2026-07-21 14:55', 'System', 'Intapp Walls', 'Integrity check', walled[0].id, 'ok',
+     'Verified the matter is excluded from all 12 connected feeds. No leakage found.'],
+  ] : [];
+
+  var blocked = log.filter(function (l) { return l[5] === 'blocked'; });
+
+  var kpis = [
+    kpi('Active screens', fmtN(walled.length), 'matters under an ethical wall', ''),
+    kpi('People screened', fmtN(screenedPeople.length), 'excluded from a matter', ''),
+    kpi('Access attempts blocked', fmtN(blocked.length), 'all logged with user and timestamp', blocked.length ? 'amber' : 'green'),
+    kpi('Leakage found', '0', 'across 12 connected feeds', 'green',
+      'The integrity check confirms a screened matter is absent from every downstream system|Last run 07-21-2026'),
+    kpi('Value behind the screen', can('fin') ? fmtK(walled.reduce(function (s, m) { return s + m.collected; }, 0)) : '—',
+      can('fin') ? 'removed from screened users’ totals' : 'requires financial access', ''),
+    kpi('Enforcement point', 'Data layer', 'not the view', 'green',
+      'Screened matters are filtered out of the population before any figure is computed|A walled user’s totals recompute without them'),
+    kpi('Next attestation', '09-08-2026', 'quarterly review cycle', ''),
+    kpi('Auditable', 'Yes', 'user · timestamp · outcome', 'green'),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* register */
+  var reg = walled.length ? '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Matter</th><th>Client</th><th>Practice</th><th>Screened from</th>' +
+    '<th>Erected</th><th>Reason</th><th>Next review</th><th>Status</th></tr></thead><tbody>' +
+    walled.map(function (m) {
+      return '<tr><td class="first-sticky"><b>' + esc(m.name.slice(0, 44)) + '</b>' +
+          '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + m.id + '</div></td>' +
+        '<td style="font-size:11.5px">' + esc(m.clientName) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(m.practice) + '</td>' +
+        '<td style="font-size:11.5px">' + screenedPeople.map(function (p) { return esc(p.name); }).join(', ') + '</td>' +
+        '<td>03-14-2026</td>' +
+        '<td style="font-size:11.5px;max-width:32ch">Lateral hire conflict</td>' +
+        '<td>09-08-2026</td>' +
+        '<td>' + pill('ACTIVE', 'red') + '</td></tr>';
+    }).join('') + '</tbody></table></div>' : '<div style="padding:20px;color:var(--color-text-muted)">No active screens.</div>';
+
+  /* audit log */
+  var audit = '<div class="demo-tbl-wrap grid-scroll" style="max-height:420px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">When</th><th>Who</th><th>Event</th><th>Matter</th><th>Outcome</th><th>Detail</th></tr></thead><tbody>' +
+    log.map(function (l) {
+      return '<tr><td class="first-sticky" style="font-size:11.5px">' + esc(l[0]) + '</td>' +
+        '<td><b style="font-size:12px">' + esc(l[1]) + '</b><div style="font-size:10.5px;color:var(--color-slate-hint)">' + esc(l[2]) + '</div></td>' +
+        '<td style="font-size:11.5px">' + esc(l[3]) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(l[4]) + '</td>' +
+        '<td>' + pill(l[5] === 'blocked' ? 'BLOCKED' : 'OK', l[5] === 'blocked' ? 'red' : 'green') + '</td>' +
+        '<td style="font-size:11.5px;color:var(--color-text-muted);max-width:44ch">' + esc(l[6]) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+
+  /* the proof — what a screened user actually sees */
+  var proof = '';
+  if (walled.length && can('fin')) {
+    var m = walled[0];
+    var group = m.practice;
+    var all = M.matters.filter(function (x) { return x.practice === group; });
+    var seen = all.filter(function (x) { return x.id !== m.id; });
+    var allR = M.rollup(all), seenR = M.rollup(seen);
+    proof = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+      '<thead><tr><th class="first-sticky">' + esc(group) + '</th><th class="r">Unscreened view</th>' +
+      '<th class="r">Screened user’s view</th><th class="r">Difference</th></tr></thead><tbody>' +
+      [['Matters', all.length, seen.length, 'n'],
+       ['Revenue', allR.collected, seenR.collected, '$'],
+       ['Unbilled WIP', allR.wip, seenR.wip, '$'],
+       ['Receivables', allR.arTotal, seenR.arTotal, '$'],
+       ['Hours', allR.hours, seenR.hours, 'n']]
+      .map(function (r) {
+        var f = r[3] === '$' ? fmtK : function (v) { return fmtN(v, 0); };
+        return '<tr><td class="first-sticky"><b>' + r[0] + '</b></td>' +
+          '<td class="r">' + f(r[1]) + '</td><td class="r">' + f(r[2]) + '</td>' +
+          '<td class="r" style="color:var(--wv-burgundy)">−' + f(r[1] - r[2]) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+        'The screened matter is not greyed out for that user — it is <b>absent</b>. Every total in their view recomputes without it, ' +
+        'which is why their revenue is lower by exactly <b>' + fmtK(m.collected) + '</b> rather than by a hidden row. ' +
+        'Sign in as <b>Theodore Nakashima</b> to see it. That distinction is what a client auditor is actually asking about, ' +
+        'and it is the reason enforcement belongs in the data layer rather than the interface.' +
+      '</div>';
+  }
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    hero('Ethical walls — ' + M.asOfLabel,
+      'Screened means <em>absent</em>, not hidden.',
+      'Walls are enforced before any figure is computed, so a screened user\'s totals recompute without the matter ' +
+      'rather than a row being suppressed. Every access attempt is logged with user, timestamp and outcome.',
+      ['intapp', 'e3e', 'graph']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    secHead('The register', fmtN(walled.length) + ' active screen' + (walled.length === 1 ? '' : 's')) +
+    panel('Screened matters', srcChip('intapp'), reg, ' style="margin-bottom:18px"') +
+
+    (proof ? secHead('Proof of enforcement', 'the same group, two views') +
+      panel('What a screened user sees', srcChip('e3e') + ' ' + srcChip('wv'), proof, ' style="margin-bottom:18px"') : '') +
+
+    secHead('Audit log', 'exportable for a client audit') +
+    panel('Every event', srcChip('intapp') + ' ' + srcChip('graph'), audit);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

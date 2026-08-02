@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trust &amp; IOLTA · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801d">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/analytics.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() (TDZ trap) */
+var trView = 'all';
+var trSearch = '';
+function trSet(k, v) { if (k === 'view') trView = v; if (k === 'search') trSearch = (v || '').toLowerCase(); render(); }
+
+/* deterministic trust ledger derived from the client book */
+function LEDGER() {
+  var M = window.MODEL;
+  return M.clientsRanked.slice(0, 90).map(function (c, i) {
+    var seed = parseInt(c.id.slice(1), 10);
+    var book = c._rev * (0.004 + (seed % 27) / 1000);
+    var bank = book;
+    var exception = null;
+    /* a handful of deliberate exceptions — the point of the page */
+    if (i % 29 === 7)  { bank = book - (400 + seed % 900); exception = 'Uncleared disbursement'; }
+    if (i % 37 === 11) { bank = book; exception = 'Stale balance — no activity 14 months'; }
+    if (i % 43 === 5)  { book = -(120 + seed % 380); bank = book; exception = 'NEGATIVE BALANCE'; }
+    return {
+      client: c.name, clientId: c.id, office: c.office,
+      book: book, bank: bank, variance: bank - book,
+      lastActivity: '2026-' + String(((seed % 7) + 1)).padStart(2, '0') + '-' + String(((seed % 27) + 1)).padStart(2, '0'),
+      exception: exception,
+      matters: Math.max(1, Math.round((seed % 5) + 1)),
+    };
+  });
+}
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+  if (!can('risk') && !can('fin')) {
+    document.getElementById('root').innerHTML = hero('Trust & IOLTA', 'Restricted.',
+      'Client money is visible to finance and compliance roles only.', ['e3e']);
+    return;
+  }
+
+  var led = LEDGER();
+  var rows = led.filter(function (l) {
+    if (trView === 'exceptions' && !l.exception) return false;
+    if (trView === 'negative' && l.book >= 0) return false;
+    if (trView === 'stale' && !(l.exception || '').indexOf) return false;
+    if (trView === 'stale' && (l.exception || '').indexOf('Stale') === -1) return false;
+    if (trSearch && l.client.toLowerCase().indexOf(trSearch) === -1) return false;
+    return true;
+  });
+
+  var bookTotal = led.reduce(function (s, l) { return s + l.book; }, 0);
+  var bankTotal = led.reduce(function (s, l) { return s + l.bank; }, 0);
+  var variance = bankTotal - bookTotal;
+  var exceptions = led.filter(function (l) { return l.exception; });
+  var negative = led.filter(function (l) { return l.book < 0; });
+  var stale = led.filter(function (l) { return (l.exception || '').indexOf('Stale') !== -1; });
+
+  var kpis = [
+    kpi('Client money held', fmt$(bookTotal), 'across ' + fmtN(led.length) + ' client ledgers', '',
+      'Segregated client funds. Never firm money, never available to the firm|Ledger balance per client'),
+    kpi('Bank balance', fmt$(bankTotal), 'from the daily BAI2 feed', '',
+      'The third leg of the three-way reconciliation|Source: firm bank file feed'),
+    kpi('Variance', fmt$(variance), Math.abs(variance) < 1 ? 'reconciled' : 'requires clearing',
+      Math.abs(variance) < 1 ? 'green' : 'amber',
+      'Bank − book|Uncleared items explain the difference; each one is listed below'),
+    kpi('Open exceptions', fmtN(exceptions.length), 'need resolution', exceptions.length ? 'amber' : 'green'),
+    kpi('Negative balances', fmtN(negative.length), 'a reportable event', negative.length ? 'amber' : 'green',
+      'A client ledger below zero means firm money funded a client disbursement|Reportable in most jurisdictions'),
+    kpi('Stale balances', fmtN(stale.length), 'no activity over 12 months', stale.length ? 'amber' : 'green',
+      'Funds sitting untouched|Most states require escheatment after a set period'),
+    kpi('Reconciliation', 'Continuous', 'not month-end', 'green',
+      'Book, ledger and bank compared on every bank file|Firms typically do this once a month, by hand'),
+    kpi('Last bank file', '11 hrs ago', 'BAI2 · daily', ''),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* three-way reconciliation summary */
+  var threeWay = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Leg</th><th>Source</th><th class="r">Balance</th><th>Status</th></tr></thead><tbody>' +
+    [['Client ledger total', 'Elite 3E trust ledger', bookTotal, 'ok'],
+     ['Trust account book balance', 'Elite 3E general ledger', bookTotal, 'ok'],
+     ['Bank statement balance', 'Bank BAI2 feed', bankTotal, Math.abs(variance) < 1 ? 'ok' : 'warn']]
+    .map(function (r) {
+      return '<tr><td class="first-sticky"><b>' + r[0] + '</b></td>' +
+        '<td style="font-size:11.5px;color:var(--color-text-muted)">' + r[1] + '</td>' +
+        '<td class="r"><b>' + fmt$(r[2]) + '</b></td>' +
+        '<td>' + pill(r[3] === 'ok' ? 'MATCHED' : 'VARIANCE', r[3] === 'ok' ? 'green' : 'amber') + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>Three-way variance</b></td><td></td>' +
+      '<td class="r" style="color:' + (Math.abs(variance) < 1 ? 'var(--color-green)' : 'var(--color-amber)') + '"><b>' + fmt$(variance) + '</b></td>' +
+      '<td>' + pill(Math.abs(variance) < 1 ? 'RECONCILED' : 'UNCLEARED ITEMS', Math.abs(variance) < 1 ? 'green' : 'amber') + '</td></tr></tfoot></table></div>' +
+    '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+      'All three legs must agree: what each client is owed, what the firm\'s books say the account holds, and what the bank says. ' +
+      'Most firms perform this once a month, by hand, from a printed statement. Here it runs on every bank file — ' +
+      'so an exception surfaces the day it appears rather than up to thirty days later.' +
+    '</div>';
+
+  /* ledger */
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:560px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Client</th><th class="r">Matters</th><th class="r">Ledger balance</th>' +
+    '<th class="r">Bank</th><th class="r">Variance</th><th>Last activity</th><th>Exception</th></tr></thead><tbody>' +
+    rows.slice(0, 60).map(function (l) {
+      return '<tr><td class="first-sticky"><b>' + esc(l.client) + '</b></td>' +
+        '<td class="r">' + l.matters + '</td>' +
+        '<td class="r" style="color:' + (l.book < 0 ? 'var(--color-red)' : '') + '"><b>' + fmt$2(l.book) + '</b></td>' +
+        '<td class="r">' + fmt$2(l.bank) + '</td>' +
+        '<td class="r" style="color:' + (Math.abs(l.variance) > 0.005 ? 'var(--color-amber)' : 'var(--color-slate-hint)') + '">' +
+          (Math.abs(l.variance) > 0.005 ? fmt$2(l.variance) : '—') + '</td>' +
+        '<td style="font-size:11.5px">' + fmtDate(l.lastActivity) + '</td>' +
+        '<td>' + (l.exception
+          ? pill(l.exception.indexOf('NEGATIVE') === 0 ? 'NEGATIVE' : l.exception.indexOf('Stale') === 0 ? 'STALE' : 'UNCLEARED',
+                 l.exception.indexOf('NEGATIVE') === 0 ? 'red' : 'amber') +
+            '<div style="font-size:10.5px;color:var(--color-text-muted);margin-top:3px">' + esc(l.exception) + '</div>'
+          : '<span style="color:var(--color-slate-hint);font-size:11px">clear</span>') + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rows.length) + ' of ' + fmtN(led.length) + ' ledgers</b></td>' +
+      '<td class="r"><b>' + fmtN(rows.reduce(function (s, l) { return s + l.matters; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmt$(rows.reduce(function (s, l) { return s + l.book; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmt$(rows.reduce(function (s, l) { return s + l.bank; }, 0)) + '</b></td>' +
+      '<td></td><td></td><td></td></tr></tfoot></table></div>';
+
+  var controls =
+    '<select class="flt' + (trView !== 'all' ? ' on' : '') + '" onchange="trSet(\'view\',this.value)">' +
+      '<option value="all">All ledgers</option>' +
+      '<option value="exceptions"' + (trView === 'exceptions' ? ' selected' : '') + '>Exceptions only</option>' +
+      '<option value="negative"' + (trView === 'negative' ? ' selected' : '') + '>Negative balances</option>' +
+      '<option value="stale"' + (trView === 'stale' ? ' selected' : '') + '>Stale balances</option></select>' +
+    ' <input type="search" class="flt-q" placeholder="Search clients…" oninput="trSet(\'search\',this.value)" value="' + esc(trSearch) + '" style="min-width:200px">';
+
+  var chain = approvalChain('trust-disb-2026-07', [
+    { role: 'bill',  label: 'Disbursement request prepared — client funds verified against ledger' },
+    { role: 'cfo',   label: 'CFO review — confirms cleared funds and no negative balance' },
+    { role: 'gc',    label: 'Risk sign-off — jurisdiction rules checked' },
+  ]);
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    hero('Trust &amp; IOLTA — ' + M.asOfLabel,
+      fmt$(bookTotal) + ' of <em>client money</em>, reconciled daily.',
+      'Three-way reconciliation on every bank file rather than once a month by hand, with exceptions surfaced the day they appear. ' +
+      exceptions.length + ' open, including ' + negative.length + ' negative balance' + (negative.length === 1 ? '' : 's') + ' — a reportable event in most jurisdictions.',
+      ['e3e', 'wv']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    secHead('Three-way reconciliation', 'ledger · book · bank') +
+    panel('All three legs', srcChip('e3e') + ' · bank BAI2 feed', threeWay, ' style="margin-bottom:18px"') +
+
+    secHead('Client ledgers', fmtN(rows.length) + ' shown') +
+    panel('Trust register', controls, tbl, ' style="margin-bottom:18px"') +
+
+    secHead('Disbursement control', 'role-gated · e-signed') +
+    panel('July 2026 disbursement batch', 'no funds move until the chain executes', chain);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

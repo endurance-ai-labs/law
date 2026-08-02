@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module in build · Whitmore Vance LLP</title>
-<link rel="stylesheet" href="/law/css/theme.css?v=20260801c">
-<link rel="stylesheet" href="/law/css/endurance.css?v=20260801c">
-<link rel="stylesheet" href="/law/css/demo.css?v=20260801c">
-<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801c">
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801d">
 </head>
 <body>
 <div id="topbar"></div>
@@ -32,7 +32,6 @@ var MODULES = {
   '/law/transactions/':  ['Deal room', 'Phase 5', 'Live deals, closing checklists, signature-page status, turn counts and clause deviation from the firm standard.'],
   '/law/ediscovery/':    ['eDiscovery', 'Phase 5', 'Volumes ingested, review throughput per reviewer, cost per gigabyte by vendor and the hosting spend run-rate.'],
   '/law/knowledge/':     ['Knowledge & experience', 'Phase 5', 'Precedent and experience search across the DMS and matter profiles — find the best three agreements with a given clause, or who has done this deal before.'],
-  '/law/people/':        ['Roster & utilization', 'Phase 6', 'Utilization shown as a distribution rather than an average, billable and non-billable mix, pro bono, and class-year cohorts.'],
   '/law/capacity/':      ['Capacity planning', 'Phase 6', 'Forward demand from open matters and weighted pipeline against available hours, with the over- and under-allocated named.'],
   '/law/development/':   ['Development & CLE', 'Phase 6', 'Associate progression, evaluation history, CLE compliance by jurisdiction with the at-risk list, bar admissions.'],
   '/law/retention/':     ['Retention risk', 'Phase 6', 'Attrition risk from hours dispersion, after-hours load, evaluation trend, comp position and tenure — with a cost-of-attrition calculator.'],
@@ -41,17 +40,12 @@ var MODULES = {
   '/law/marketing/':     ['Marketing & rankings', 'Phase 6', 'Campaigns, events, directory submissions with deadline tracking, and thought-leadership attributed to pipeline.'],
   '/law/intake/':        ['New business intake', 'Phase 4', 'The intake workflow with its full approval chain — conflicts, financial, risk, practice leader — and cycle-time analytics.'],
   '/law/conflicts/':     ['Conflicts', 'Phase 4', 'Search, the hit-resolution queue, corporate-family expansion and the waivers register.'],
-  '/law/walls/':         ['Ethical walls', 'Phase 4', 'The wall register, plus the access-attempt audit log. The enforcement itself is already live — a screened matter is removed before any figure is computed.'],
-  '/law/trust/':         ['Trust & IOLTA', 'Phase 4', 'Client money by matter, three-way reconciliation state, exceptions for negative balances and stale funds, and the disbursement approval chain.'],
   '/law/ocg/':           ['Outside counsel guidelines', 'Phase 4', 'Each client’s guidelines parsed into enforceable rules — staffing restrictions, rate freezes, block-billing bans, travel policy, approval thresholds.'],
   '/law/insurance/':     ['Claims & professional indemnity', 'Phase 4', 'The claims and circumstances register, policy limits and incident reporting.'],
   '/law/collections/':   ['Collections', 'Phase 7', 'The AR work queue, promise-to-pay tracking, the escalation ladder and collector performance.'],
   '/law/vendors/':       ['Vendors & cost recovery', 'Phase 7', 'Vendor spend across eDiscovery, experts, court reporters and research, with the recovery capture rate.'],
   '/law/it/':            ['Systems health', 'Phase 7', 'Integration health, sync failures, licence utilization by system, ticket volume and security posture.'],
-  '/law/integrations/':  ['Integration map', 'Phase 7', 'Every connected system with its integration method, auth type, sync cadence, last sync, record counts and field mapping.'],
-  '/law/brain/':         ['The firm brain', 'Phase 8', 'Ask anything across every connected system and get an answer that cites its sources and links to the underlying record.'],
   '/law/admin/':         ['Administration', 'Phase 7', 'Users, the role and permission matrix, ethical wall configuration, the audit log and feature flags.'],
-  '/law/afa/':           ['Fee arrangements', 'Phase 3', 'Every non-hourly arrangement with its realized effective rate against the hourly equivalent, overrun distribution and break-even hours.'],
 };
 
 var LIVE = [
@@ -65,6 +59,13 @@ var LIVE = [
   ['/law/budget/', 'Budget vs actual'],
   ['/law/billing/', 'Billing & e-billing'],
   ['/law/profitability/', 'Profitability'],
+  ['/law/afa/', 'Fee arrangements'],
+  ['/law/explore/', 'Exhibit builder'],
+  ['/law/integrations/', 'Integration map'],
+  ['/law/brain/', 'The firm brain'],
+  ['/law/walls/', 'Ethical walls'],
+  ['/law/trust/', 'Trust & IOLTA'],
+  ['/law/people/', 'Roster & utilization'],
 ];
 
 function render() {

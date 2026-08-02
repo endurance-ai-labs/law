@@ -30,9 +30,13 @@ Public landing at **`/welcome/`**. Signed-out visitors hitting `/` are redirecte
 | — | `/explore/` exhibit builder + shared filter engine (`js/analytics.js`) | ✅ |
 | — | Mobile: no horizontal page scroll at any width | ✅ |
 | — | `404.html` catch-all so unbuilt modules explain themselves | ✅ |
-| 3–8 | Remaining 24 pages | pending — see `build-spec/OUTLINE.md` §6 |
+| 4 | `/walls/` + `/trust/` | ✅ |
+| 6 | `/people/` | ✅ |
+| 7 | `/integrations/` connector map | ✅ |
+| 8 | `/brain/` cross-system Q&A | ✅ |
+| 3–8 | Remaining 17 pages | pending — see `build-spec/OUTLINE.md` §6 |
 
-**Live pages (13):** `/` · `/welcome/` · `/revenue/` · `/clients/` · `/matters/` · `/afa/` · `/financials/` · `/lockup/` · `/rates/` · `/budget/` · `/billing/` · `/profitability/`
+**Live pages (19):** `/` · `/welcome/` · `/revenue/` · `/clients/` · `/matters/` · `/afa/` · `/financials/` · `/lockup/` · `/rates/` · `/budget/` · `/billing/` · `/profitability/`
 
 Every other nav route resolves to `404.html`, which names the module, what it will hold and which phase it lands in — nothing dead-ends.
 

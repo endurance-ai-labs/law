@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Firm Brain · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801d">
+<style>
+.q-list { display: grid; gap: 9px; }
+.q-item {
+  display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
+  background: var(--color-bg-3); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); padding: 12px 15px; cursor: pointer; text-align: left;
+  font: inherit; color: inherit; width: 100%;
+}
+.q-item:hover { border-color: var(--color-blue); }
+.q-item .qt { font-size: 13.5px; font-weight: 700; }
+.q-item .qs { font-size: 11px; color: var(--color-slate-hint); margin-top: 3px; }
+.q-item .qa { font-size: 11px; font-weight: 800; color: var(--color-blue); white-space: nowrap; }
+.answer { background: var(--color-bg-3); border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-blue); border-radius: var(--radius-md); padding: 18px 20px; }
+.answer .aq { font-size: 15px; font-weight: 800; margin-bottom: 12px; }
+.answer .ab { font-size: 14px; line-height: 1.7; color: var(--color-cloud-whisper); }
+.answer .ab b { color: var(--color-blue-light); }
+.answer .asrc { margin-top: 16px; padding-top: 13px; border-top: 1px solid var(--color-border); }
+.answer .asrc .l { font-size: 9.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--color-slate-hint); margin-bottom: 8px; }
+.ask-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ask-row input { flex: 1 1 320px; font: inherit; font-size: 14px; padding: 12px 14px;
+  border-radius: var(--radius-sm); border: 1px solid var(--color-border);
+  background: var(--color-bg-2); color: var(--color-cloud-whisper); outline: none; min-width: 0; }
+.ask-row input:focus { border-color: var(--color-blue); }
+</style>
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/js/data.js"></script>
+<script src="/law/js/util.js"></script>
+<script src="/law/js/analytics.js"></script>
+<script src="/law/js/nav.js"></script>
+<script>
+renderTopbar();
+
+/* state — var, before the first render() (TDZ trap) */
+var brAnswer = null;
+var brTyped = '';
+
+/* ============================================================
+   Every answer is COMPUTED from the shared model at render time,
+   never written out as prose. If the model changes, the answer
+   changes — which is the whole point of the thing.
+   Each question must join at least two source systems.
+   ============================================================ */
+function QUESTIONS() {
+  var M = window.MODEL, F = M.firm;
+  var mine = scopeMatters(M.matters);
+  var R = M.rollup(mine);
+  var money = can('fin'), margin = can('margin');
+  var qs = [];
+
+  if (money) {
+    qs.push({
+      q: 'Which of our top twenty-five clients are shrinking?',
+      sub: 'Practice management collections × CRM engagement recency',
+      src: ['e3e', 'crm'],
+      answer: function () {
+        var s = F.shrinkingTop25;
+        var lost = s.reduce(function (a, c) { return a + (c._revPrior - c._rev); }, 0);
+        return '<b>' + s.length + ' of the top 25</b> are below prior year, together down <b>' + fmtK(lost) + '</b>. ' +
+          'The three largest declines are ' + s.slice(0, 3).map(function (c) {
+            return '<b>' + esc(c.name) + '</b> (' + fmtK(c._revPrior) + ' → ' + fmtK(c._rev) + ')';
+          }).join(', ') + '. ' +
+          'Each belongs to a different relationship partner, which is why the pattern only exists at firm level — ' +
+          'no individual partner sees more than one of them.';
+      },
+      links: [['/law/clients/', 'Client book']],
+    });
+
+    qs.push({
+      q: 'How much did we lose to invoice lines we never appealed?',
+      sub: 'Client e-billing portals × parsed outside counsel guidelines',
+      src: ['ebill', 'intapp'],
+      answer: function () {
+        var E = M.ebill;
+        var prevent = E.reasons.filter(function (r) {
+          return ['BLOCK_BILLING', 'STAFFING', 'RATE', 'TASK_CODE', 'ADMIN', 'TRAVEL'].indexOf(r.code) !== -1;
+        });
+        var preventAmt = M.ebillClients.reduce(function (s, c) {
+          return s + c.mix.filter(function (m) {
+            return ['BLOCK_BILLING', 'STAFFING', 'TASK_CODE', 'ADMIN', 'TRAVEL'].indexOf(m.code) !== -1;
+          }).reduce(function (a, m) { return a + m.amount; }, 0);
+        }, 0);
+        return 'Clients rejected <b>' + fmtK(E.rejected) + '</b> of submitted value last year — ' + fmtPct(E.rejRate * 100) +
+          ' of everything sent through a portal. Only <b>' + fmtPct(E.appealed / E.rejected * 100) + '</b> was appealed, ' +
+          'and appeals recovered <b>' + fmtK(E.recovered) + '</b>. That leaves <b>' + fmtK(E.unrecovered) + '</b> written off in silence. ' +
+          '<b>' + fmtK(preventAmt) + '</b> of it failed on something checkable before submission — block billing, a missing task code, ' +
+          'a timekeeper the client never approved. The firm is not losing arguments; it is losing formatting.';
+      },
+      links: [['/law/billing/', 'Billing & e-billing']],
+    });
+
+    qs.push({
+      q: 'How many days of cash are sitting in work we have done and not billed?',
+      sub: 'Practice management WIP × time-capture delinquency × bank feed',
+      src: ['e3e', 'wv'],
+      answer: function () {
+        var perDay = R.collected / 365;
+        var wipDays = R.wip / perDay, arDays = R.arTotal / perDay;
+        var old = R.a90 + R.a120;
+        return 'Lockup stands at <b>' + fmtN(wipDays + arDays, 0) + ' days</b> — ' + fmtN(wipDays, 0) +
+          ' in unbilled WIP and ' + fmtN(arDays, 0) + ' in receivables — against revenue of <b>' + fmtK(R.collected) + '</b>. ' +
+          'That is <b>' + fmtK(R.wip + R.arTotal) + '</b> of work already done and not yet paid for, and <b>' + fmtK(old) +
+          '</b> of the receivable is older than ninety days. ' +
+          'A single day is worth <b>' + fmtK(perDay) + '</b>; five days released is <b>' + fmtK(perDay * 5) +
+          '</b> of working capital, or about ' + fmtK(perDay * 5 * 0.08) + ' a year at the revolver rate.';
+      },
+      links: [['/law/lockup/', 'Lockup']],
+    });
+
+    qs.push({
+      q: 'Where are we leaking the most rate?',
+      sub: 'Standard rates × collections × discount and write-down reason codes',
+      src: ['e3e', 'ebill'],
+      answer: function () {
+        var worst = M.practices.map(function (p) { return { n: p.name, r: M.byPractice[p.name] }; })
+          .filter(function (x) { return x.r; })
+          .map(function (x) { return { n: x.n, leak: (x.r.standardValue - x.r.collected), rate: x.r.standardValue / x.r.hours - x.r.collected / x.r.hours }; })
+          .sort(function (a, b) { return b.leak - a.leak; });
+        return 'The card says <b>' + fmt$(R.standardValue / R.hours) + '</b> an hour. An hour actually earns <b>' +
+          fmt$(R.collected / R.hours) + '</b>. The gap is <b>' + fmt$(R.standardValue / R.hours - R.collected / R.hours) +
+          '</b> on every billed hour, or <b>' + fmtK(R.standardValue - R.collected) + '</b> across the book. ' +
+          'The largest single pool is <b>' + esc(worst[0].n) + '</b> at ' + fmtK(worst[0].leak) + ', followed by ' +
+          esc(worst[1].n) + ' at ' + fmtK(worst[1].leak) + '. ' +
+          'One point of realization is worth <b>' + fmtK(R.standardValue / 100) + '</b> a year.';
+      },
+      links: [['/law/revenue/', 'Revenue & realization'], ['/law/rates/', 'Rates']],
+    });
+  }
+
+  if (margin) {
+    qs.push({
+      q: 'What is our real margin on fixed-fee work?',
+      sub: 'Time and rates × payroll cost rates × allocated overhead',
+      src: ['e3e', 'adp'],
+      answer: function () {
+        var hourly = mine.filter(function (m) { return m.fee === 'hourly'; });
+        var afa = mine.filter(function (m) { return m.fee !== 'hourly'; });
+        var hRate = hourly.reduce(function (s, m) { return s + m.collected; }, 0) / hourly.reduce(function (s, m) { return s + m.hours; }, 0);
+        var aR = M.rollup(afa);
+        var equiv = aR.hours * hRate;
+        var gap = aR.collected - equiv;
+        return 'Non-hourly work is <b>' + fmtK(aR.collected) + '</b> across <b>' + fmtN(afa.length) + '</b> matters, at a margin of <b>' +
+          fmtPct(aR.margin / aR.collected * 100) + '</b>. The realized rate on that work is <b>' + fmt$(aR.collected / aR.hours) +
+          '</b> an hour against a straight-hourly benchmark of <b>' + fmt$(hRate) + '</b>. ' +
+          'Priced hourly the same hours would have collected <b>' + fmtK(equiv) + '</b> — so fixing the fee ' +
+          (gap >= 0 ? 'earned <b>' + fmtK(gap) + '</b> more' : 'gave up <b>' + fmtK(Math.abs(gap)) + '</b>') + '. ' +
+          'Most firms price fixed fees off last year\'s fee rather than off the hours the work actually takes, which is why ' +
+          'the give-up only becomes visible after the matter closes.';
+      },
+      links: [['/law/afa/', 'Fee arrangements'], ['/law/profitability/', 'Profitability']],
+    });
+
+    qs.push({
+      q: 'Which matters are we losing money on right now?',
+      sub: 'Collections × cost of hours worked × allocated overhead',
+      src: ['e3e', 'adp'],
+      answer: function () {
+        var loss = mine.filter(function (m) { return m.active && m.margin < 0; }).sort(function (a, b) { return a.margin - b.margin; });
+        var tot = loss.reduce(function (s, m) { return s + m.margin; }, 0);
+        var byPrac = {};
+        loss.forEach(function (m) { byPrac[m.practice] = (byPrac[m.practice] || 0) + m.margin; });
+        var worstPrac = Object.keys(byPrac).sort(function (a, b) { return byPrac[a] - byPrac[b]; })[0];
+        return '<b>' + fmtN(loss.length) + ' active matters</b> are underwater by <b>' + fmtK(Math.abs(tot)) + '</b> — ' +
+          fmtPct(loss.length / mine.filter(function (m) { return m.active; }).length * 100) + ' of open work. ' +
+          'The worst is <b>' + esc(loss[0].name.slice(0, 44)) + '</b> for ' + esc(loss[0].clientName) + ', at ' + fmtK(loss[0].margin) + '. ' +
+          '<b>' + esc(worstPrac) + '</b> carries the largest share. ' +
+          'None of these look unprofitable on a billings report — they only appear once the hours are priced at what they cost.';
+      },
+      links: [['/law/profitability/', 'Profitability']],
+    });
+  }
+
+  qs.push({
+    q: 'Who is carrying too much work, and who is not carrying enough?',
+    sub: 'Time capture × target hours × open matter demand',
+    src: ['e3e', 'adp'],
+    answer: function () {
+      var over = M.timekeepers.filter(function (t) { return t.cls === 'ASC'; });
+      var delinq = M.timekeepers.filter(function (t) { return t.delinquentDays > 7; });
+      return 'Firm utilization is <b>' + fmtPct(M.firm.utilization * 100) + '</b> against target, across <b>' +
+        fmtN(M.timekeepers.length) + '</b> timekeepers and <b>' + fmtN(M.firm.hours, 0) + '</b> billable hours. ' +
+        'The average hides the spread: <b>' + fmtN(delinq.length) + '</b> timekeepers are more than seven days behind on entering time, ' +
+        'and reconstructed time is systematically lower than time entered the same day. ' +
+        'Leverage sits at <b>' + M.firm.leverage.toFixed(2) + '</b> non-partner hours per partner hour — ' +
+        'the number that decides whether a matter can be profitable before anyone works on it.';
+    },
+    links: [['/law/people/', 'Roster & utilization']],
+  });
+
+  qs.push({
+    q: 'What is our exposure if a partner leaves?',
+    sub: 'Origination credits × client concentration × relationship strength',
+    src: ['e3e', 'crm', 'graph'],
+    answer: function () {
+      var byP = M.rollupMap(mine, function (m) { return m.partnerName; });
+      var top = Object.keys(byP).map(function (k) { return { n: k, r: byP[k] }; })
+        .sort(function (a, b) { return b.r.collected - a.r.collected; })[0];
+      var clients = new Set(mine.filter(function (m) { return m.partnerName === top.n; }).map(function (m) { return m.clientId; }));
+      return 'The largest single book belongs to <b>' + esc(top.n) + '</b> — <b>' + fmtK(top.r.collected) +
+        '</b> across <b>' + fmtN(top.r.matters) + '</b> matters and <b>' + clients.size + '</b> clients, or ' +
+        fmtPct(top.r.collected / R.collected * 100) + ' of the firm. ' +
+        'Top-10 client concentration is <b>' + fmtPct(M.firm.top10Share * 100) + '</b> and top-25 is ' +
+        fmtPct(M.firm.top25Share * 100) + '. ' +
+        'Whether those clients follow depends on relationship depth rather than the billing relationship — which is why ' +
+        'the CRM and calendar metadata matter here as much as the ledger does.';
+    },
+    links: [['/law/clients/', 'Client book']],
+  });
+
+  qs.push({
+    q: 'Can we prove to a client auditor that the ethical wall held?',
+    sub: 'Intapp wall membership × portal access log',
+    src: ['intapp', 'graph'],
+    answer: function () {
+      var walled = M.walledMatters.length;
+      var m = M.matterById[M.walledMatters[0]];
+      return 'Yes. <b>' + walled + ' matter</b> is under a screen, and the wall is enforced at the data layer rather than by convention: ' +
+        'screened matters are removed from the population <i>before</i> any figure is computed, so a walled user\'s totals ' +
+        'recompute without them rather than a row being hidden. ' +
+        (can('fin')
+          ? 'The screened matter carries <b>' + fmtK(m.collected) + '</b>, and the Litigation group leader\'s revenue drops by exactly that amount when they sign in. '
+          : '') +
+        'Every access attempt is logged with user, timestamp and outcome.';
+    },
+    links: [['/law/walls/', 'Ethical walls']],
+  });
+
+  qs.push({
+    q: 'Show me everything about one client, across every system.',
+    sub: 'Practice management × DMS × e-billing × CRM',
+    src: ['e3e', 'iman', 'ebill', 'crm'],
+    answer: function () {
+      var c = M.clientsRanked.filter(function (x) { return mine.some(function (m) { return m.clientId === x.id; }); })[0];
+      var ms = mine.filter(function (m) { return m.clientId === c.id; });
+      var r = M.rollup(ms);
+      var pracs = [...new Set(ms.map(function (m) { return m.practice; }))];
+      var offs = [...new Set(ms.map(function (m) { return m.office; }))];
+      return '<b>' + esc(c.name) + '</b> — ' + esc(c.industry) + ', a client since ' + c.since + '. ' +
+        (can('fin') ? '<b>' + fmtK(r.collected) + '</b> collected across <b>' + fmtN(r.matters) + '</b> matters in <b>' +
+          pracs.length + '</b> practice groups and <b>' + offs.length + '</b> offices, at ' + fmtPct(r.realization * 100) + ' realization. ' +
+          'Unbilled WIP ' + fmtK(r.wip) + ', receivables ' + fmtK(r.arTotal) + '. ' : fmtN(r.matters) + ' matters across ' + pracs.length + ' practice groups. ') +
+        (c.ebillPortal ? 'Bills go through <b>' + esc(c.ebillPortal) + '</b> under <b>' + c.ocgCount + '</b> parsed guideline rules. ' : 'No e-billing portal. ') +
+        'Relationship strength ' + c.strength + '/100. ' +
+        'Before this portal that answer required opening six systems separately.';
+    },
+    links: [['/law/clients/', 'Client book'], ['/law/matters/', 'Matter register']],
+  });
+
+  qs.push({
+    q: 'What would a six per cent rate increase actually net us?',
+    sub: 'Rate card × historical realization by client × guideline rate freezes',
+    src: ['e3e', 'ebill'],
+    answer: function () {
+      if (!money) return 'Rate modelling requires financial access.';
+      var inc = 0.06, freeze = 0.12, drag = 0.35;
+      var eff = inc * (1 - freeze);
+      var newStd = R.standardValue * (1 + eff);
+      var newRealz = (R.collected / R.standardValue) - eff * drag;
+      var delta = newStd * newRealz - R.collected;
+      var naive = R.collected * inc;
+      return 'The room will assume <b>' + fmtK(naive) + '</b>. The honest figure is <b>' + fmtK(delta) + '</b>. ' +
+        'About <b>' + fmtPct(freeze * 100) + '</b> of revenue sits behind a client rate freeze and cannot be increased at all, ' +
+        'and roughly a third of what remains is given back through discounts, write-downs and short-pays. ' +
+        'The difference between the two numbers — <b>' + fmtK(naive - delta) + '</b> — is the conversation the rate committee should be having.';
+    },
+    links: [['/law/rates/', 'Rates & exceptions']],
+  });
+
+  return qs;
+}
+
+function askPreset(i) { brAnswer = i; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function askTyped(v) {
+  brTyped = v || '';
+  var qs = QUESTIONS();
+  var t = brTyped.toLowerCase();
+  if (!t.trim()) { brAnswer = null; render(); return; }
+  /* keyword match against the question bank — a demo, not a language model */
+  var best = -1, bestScore = 0;
+  qs.forEach(function (q, i) {
+    var hay = (q.q + ' ' + q.sub).toLowerCase();
+    var score = t.split(/\s+/).filter(function (w) { return w.length > 3 && hay.indexOf(w) !== -1; }).length;
+    if (score > bestScore) { bestScore = score; best = i; }
+  });
+  brAnswer = bestScore > 0 ? best : -1;
+  render();
+}
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+  var qs = QUESTIONS();
+
+  var answerPanel = '';
+  if (brAnswer === -1) {
+    answerPanel = panel('No match', 'the demo answers from a fixed question bank',
+      '<div class="answer" style="border-left-color:var(--color-amber)">' +
+        '<div class="aq">' + esc(brTyped) + '</div>' +
+        '<div class="ab">This demonstration answers from the ' + qs.length + ' questions below, each computed live from the connected model. ' +
+        'A production brain answers anything the data can support — this one is deliberately bounded so every answer on screen is verifiable.</div>' +
+      '</div>', ' style="margin-bottom:18px"');
+  } else if (brAnswer !== null && qs[brAnswer]) {
+    var q = qs[brAnswer];
+    answerPanel = panel('Answer', srcRow(q.src),
+      '<div class="answer">' +
+        '<div class="aq">' + esc(q.q) + '</div>' +
+        '<div class="ab">' + q.answer() + '</div>' +
+        '<div class="asrc"><div class="l">Sources joined</div>' +
+          srcRow(q.src) +
+          '<div style="margin-top:10px;display:flex;gap:7px;flex-wrap:wrap">' +
+            q.links.map(function (l) { return '<a class="fchip" href="' + l[0] + '">' + esc(l[1]) + ' →</a>'; }).join('') +
+          '</div>' +
+        '</div>' +
+      '</div>', ' style="margin-bottom:18px"');
+  }
+
+  var list = '<div class="q-list">' + qs.map(function (q, i) {
+    return '<button class="q-item" onclick="askPreset(' + i + ')">' +
+      '<span><span class="qt">' + esc(q.q) + '</span><span class="qs">' + esc(q.sub) + '</span></span>' +
+      '<span class="qa">' + q.src.length + ' systems →</span></button>';
+  }).join('') + '</div>';
+
+  var ask =
+    '<div class="ask-row">' +
+      '<input id="br-q" placeholder="Ask the firm anything…" value="' + esc(brTyped) + '" ' +
+        'onkeydown="if(event.key===\'Enter\')askTyped(this.value)">' +
+      '<button class="nav-cta" style="border:0;border-radius:var(--radius-sm);color:#fff;font:inherit;font-size:13px;font-weight:800;padding:12px 22px;cursor:pointer" ' +
+        'onclick="askTyped(document.getElementById(\'br-q\').value)">Ask</button>' +
+    '</div>' +
+    '<div style="margin-top:11px;font-size:11.5px;color:var(--color-slate-hint);line-height:1.55">' +
+      'Every answer below is computed from the connected model at the moment you ask, not written out in advance — ' +
+      'change the data and the answer changes. Each one names the systems it joined and links to the record.' +
+    '</div>';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('The firm brain',
+      'Ask the firm. <em>It answers with its sources.</em>',
+      'The systems already hold the answers. What they have never had is somewhere the answer could be assembled — ' +
+      'the ledger joined to the document system joined to the client portals joined to payroll.',
+      ['e3e', 'iman', 'ebill', 'intapp', 'adp', 'graph', 'crm']) +
+
+    panel('Ask', srcChip('wv'), ask, ' style="margin-bottom:18px"') +
+    answerPanel +
+
+    secHead('Questions this firm could not answer before', qs.length + ' · each joins two or more systems') +
+    panel('Question bank', 'click any one', list);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>
