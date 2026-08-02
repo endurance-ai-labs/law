@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deal Room · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260802a">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/js/data.js?v=20260802a"></script>
+<script src="/law/js/util.js?v=20260802a"></script>
+<script src="/law/js/analytics.js?v=20260802a"></script>
+<script src="/law/js/nav.js?v=20260802a"></script>
+<script>
+renderTopbar();
+
+/* state — var, before the first render() (TDZ trap) */
+var txDeal = '';
+var txPhase = 'all';
+var txSearch = '';
+function txSet(k, v) {
+  if (k === 'phase') txPhase = v; if (k === 'search') txSearch = (v || '').toLowerCase(); render();
+}
+function txOpen(id) { txDeal = id; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function txBack() { txDeal = ''; render(); }
+
+var PHASES = ['Term sheet', 'Diligence', 'Drafting', 'Negotiation', 'Signing', 'Closing'];
+var CHECKLIST = [
+  ['Corporate authority', 'Board and shareholder resolutions', 'Both sides'],
+  ['Purchase agreement', 'Executed signature pages', 'Both sides'],
+  ['Disclosure schedules', 'Final, cross-referenced to reps', 'Seller'],
+  ['Third-party consents', 'Material contracts and landlords', 'Seller'],
+  ['Regulatory clearance', 'Antitrust and sector approvals', 'Both sides'],
+  ['Escrow agreement', 'Executed and funded', 'Both sides'],
+  ['Officer certificates', 'Bring-down and secretary certificates', 'Seller'],
+  ['Legal opinions', 'Enforceability and due authorisation', 'Both counsel'],
+  ['Lien releases', 'UCC-3 terminations filed', 'Seller'],
+  ['Employment agreements', 'Key employee retention', 'Buyer'],
+  ['Transition services', 'Schedules agreed', 'Both sides'],
+  ['Funds flow', 'Agreed and wire instructions confirmed', 'Both sides'],
+];
+var CLAUSES = [
+  ['Cap on indemnity', '10% of purchase price', 'Firm standard'],
+  ['Survival period', '18 months general reps', 'Firm standard'],
+  ['Basket', '0.5% tipping', 'Firm standard'],
+  ['MAE definition', 'Carve-outs for market conditions', 'Deviation — buyer-favourable'],
+  ['Non-compete', '3 years, sector and territory', 'Firm standard'],
+  ['Earn-out', '2-year, EBITDA-based', 'Deviation — no firm precedent'],
+  ['Governing law', 'Delaware', 'Firm standard'],
+  ['Specific performance', 'Available to both parties', 'Deviation — seller-favourable'],
+];
+
+function DEALS() {
+  var M = window.MODEL;
+  return scopeMatters(M.matters)
+    .filter(function (m) { return (m.practiceId === 'CORP' || m.practiceId === 'RE' || m.practiceId === 'RX') && m.active; })
+    .sort(function (a, b) { return b.collected - a.collected; })
+    .slice(0, 40)
+    .map(function (m) {
+      var s = parseInt(m.id.replace(/\D/g, ''), 10);
+      var phase = s % PHASES.length;
+      var done = Math.min(CHECKLIST.length, Math.round((phase + 1) / PHASES.length * CHECKLIST.length));
+      var turns = 2 + (s % 9);
+      var target = addDays('2026-07-31', 10 + (s % 70));
+      return { m: m, phase: phase, done: done, turns: turns, target: target,
+               days: 10 + (s % 70),
+               atRisk: (s % 9 === 0) && phase < 4,
+               value: m.standardValue * (12 + (s % 40)) };
+    });
+}
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+  var money = can('fin');
+  var deals = DEALS();
+
+  /* ---------- one deal ---------- */
+  if (txDeal) {
+    var d = deals.filter(function (x) { return x.m.id === txDeal; })[0];
+    if (!d) { txDeal = ''; render(); return; }
+    var s = parseInt(d.m.id.replace(/\D/g, ''), 10);
+
+    var cl = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+      '<thead><tr><th class="first-sticky">Item</th><th>Detail</th><th>Responsible</th><th>Status</th></tr></thead><tbody>' +
+      CHECKLIST.map(function (c, i) {
+        var st = i < d.done ? 'Complete' : i === d.done ? 'In progress' : 'Not started';
+        return '<tr><td class="first-sticky"><b>' + esc(c[0]) + '</b></td>' +
+          '<td style="font-size:11.5px;color:var(--color-text-muted)">' + esc(c[1]) + '</td>' +
+          '<td style="font-size:11.5px">' + esc(c[2]) + '</td>' +
+          '<td>' + pill(st.toUpperCase(), st === 'Complete' ? 'green' : st === 'In progress' ? 'amber' : '') + '</td></tr>';
+      }).join('') +
+      '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + d.done + ' of ' + CHECKLIST.length + ' complete</b></td>' +
+        '<td></td><td></td><td class="r"><b>' + fmtPct(d.done / CHECKLIST.length * 100) + '</b></td></tr></tfoot></table></div>';
+
+    var clauses = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+      '<thead><tr><th class="first-sticky">Clause</th><th>Position</th><th>Against firm standard</th></tr></thead><tbody>' +
+      CLAUSES.map(function (c, i) {
+        var dev = c[2].indexOf('Deviation') === 0 && (s + i) % 3 !== 0;
+        return '<tr><td class="first-sticky"><b>' + esc(c[0]) + '</b></td>' +
+          '<td style="font-size:11.5px">' + esc(c[1]) + '</td>' +
+          '<td>' + (dev ? pill(c[2].toUpperCase().slice(0, 30), 'amber') : pill('STANDARD', 'green')) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<div style="margin-top:13px;padding-top:12px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+        'Deviation from the firm standard is not automatically wrong — it is a question somebody should have answered deliberately. ' +
+        'Surfacing it here means the answer exists before the closing call rather than after it.' +
+      '</div>';
+
+    var kpis = [
+      kpi('Phase', PHASES[d.phase], 'of ' + PHASES.length, ''),
+      kpi('Checklist', d.done + ' / ' + CHECKLIST.length, fmtPct(d.done / CHECKLIST.length * 100) + ' complete',
+        d.done / CHECKLIST.length > 0.7 ? 'green' : ''),
+      kpi('Target close', fmtDate(d.target), d.days + ' days out', d.days < 21 ? 'amber' : ''),
+      kpi('Drafting turns', fmtN(d.turns), 'rounds exchanged', d.turns > 7 ? 'amber' : ''),
+      kpi('Fees to date', money ? fmtK(d.m.collected) : '—', money ? fmtN(d.m.hours, 0) + ' hours' : '', ''),
+      kpi('Budget burn', d.m.budget > 0 ? fmtPct(d.m.standardValue / d.m.budget * 100) : '—',
+        d.m.budget > 0 ? 'of ' + fmtK(d.m.budget) : 'no budget', d.m.overBudget ? 'amber' : ''),
+      kpi('Deal value', money ? fmtK(d.value) : '—', 'headline consideration', ''),
+      kpi('Status', d.atRisk ? 'At risk' : 'On track', d.atRisk ? 'consents outstanding' : 'no blockers',
+        d.atRisk ? 'amber' : 'green'),
+    ];
+    while (kpis.length % 4 !== 0) kpis.pop();
+
+    document.getElementById('root').innerHTML =
+      hero(esc(d.m.clientName) + ' · ' + d.m.id,
+        esc(d.m.name.slice(0, 56)),
+        esc(d.m.practice) + ' · ' + esc(d.m.partnerName) + ' · target close ' + fmtDate(d.target),
+        ['e3e', 'iman', 'intapp']) +
+      '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+      '<div class="row2">' +
+        panel('Closing checklist', srcChip('iman'), cl) +
+        panel('Clause positions', srcChip('iman') + ' · against firm precedent', clauses) +
+      '</div>' +
+      '<div style="margin-top:20px"><button class="fchip link" onclick="txBack()">← All deals</button> ' +
+      '<a class="fchip link" href="/law/matter/?id=' + encodeURIComponent(d.m.id) + '">Matter workspace →</a></div>';
+    return;
+  }
+
+  /* ---------- all deals ---------- */
+  var rows = deals.filter(function (d) {
+    if (txPhase !== 'all' && PHASES[d.phase] !== txPhase) return false;
+    if (txSearch && (d.m.clientName + ' ' + d.m.name + ' ' + d.m.partnerName).toLowerCase().indexOf(txSearch) === -1) return false;
+    return true;
+  });
+
+  var atRisk = deals.filter(function (d) { return d.atRisk; });
+  var closing = deals.filter(function (d) { return d.days <= 30; });
+  var avgTurns = deals.reduce(function (s, d) { return s + d.turns; }, 0) / deals.length;
+
+  var kpis = [
+    kpi('Live deals', fmtN(deals.length), 'across corporate, real estate and restructuring', ''),
+    kpi('Closing inside 30 days', fmtN(closing.length), 'need attention now', closing.length ? 'amber' : ''),
+    kpi('At risk', fmtN(atRisk.length), 'consents or conditions outstanding', atRisk.length ? 'amber' : 'green'),
+    kpi('Average turns', fmtN(avgTurns, 1), 'drafting rounds per deal', avgTurns > 6 ? 'amber' : '',
+      'Each round is real cost on a fixed fee|A deal running to nine turns is a pricing problem, not a drafting one'),
+    kpi('Checklist completion', fmtPct(deals.reduce(function (s, d) { return s + d.done / CHECKLIST.length; }, 0) / deals.length * 100),
+      'across all live deals', ''),
+    kpi('Fees on live deals', money ? fmtK(deals.reduce(function (s, d) { return s + d.m.collected; }, 0)) : '—',
+      money ? 'billed to date' : 'requires financial access', ''),
+    kpi('Over budget', fmtN(deals.filter(function (d) { return d.m.overBudget; }).length),
+      'past the agreed fee', deals.filter(function (d) { return d.m.overBudget; }).length ? 'amber' : 'green'),
+    kpi('Aggregate deal value', money ? fmtK(deals.reduce(function (s, d) { return s + d.value; }, 0)) : '—',
+      'headline consideration', ''),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:560px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Deal</th><th>Client</th><th>Partner</th><th>Phase</th>' +
+    '<th class="r">Checklist</th><th class="r">Turns</th><th>Target close</th>' +
+    (money ? '<th class="r">Fees</th><th class="r">Burn</th>' : '') + '<th>Status</th></tr></thead><tbody>' +
+    rows.map(function (d) {
+      return '<tr><td class="first-sticky">' +
+          '<a href="#" onclick="event.preventDefault();txOpen(\'' + d.m.id + '\')" style="color:var(--color-blue);text-decoration:none"><b>' +
+          esc(d.m.name.slice(0, 40)) + '</b></a>' +
+          '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + d.m.id + '</div></td>' +
+        '<td style="font-size:11.5px">' + esc(d.m.clientName) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(d.m.partnerName) + '</td>' +
+        '<td style="font-size:11.5px">' + PHASES[d.phase] + '</td>' +
+        '<td class="r">' + d.done + '/' + CHECKLIST.length + '</td>' +
+        '<td class="r" style="color:' + (d.turns > 7 ? 'var(--color-amber)' : '') + '">' + d.turns + '</td>' +
+        '<td style="font-size:11.5px;color:' + (d.days < 21 ? 'var(--color-amber)' : '') + '">' + fmtDate(d.target) + '</td>' +
+        (money ? '<td class="r">' + fmtK(d.m.collected) + '</td>' +
+                 '<td class="r" style="color:' + (d.m.overBudget ? 'var(--color-red)' : '') + '">' +
+                   (d.m.budget > 0 ? fmtPct(d.m.standardValue / d.m.budget * 100) : '—') + '</td>' : '') +
+        '<td>' + (d.atRisk ? pill('AT RISK', 'amber') : pill('ON TRACK', 'green')) + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rows.length) + ' of ' + fmtN(deals.length) + ' deals</b></td>' +
+      '<td></td><td></td><td></td><td></td>' +
+      '<td class="r"><b>' + fmtN(rows.reduce(function (s, d) { return s + d.turns; }, 0) / Math.max(1, rows.length), 1) + '</b></td><td></td>' +
+      (money ? '<td class="r"><b>' + fmtK(rows.reduce(function (s, d) { return s + d.m.collected; }, 0)) + '</b></td><td></td>' : '') +
+      '<td></td></tr></tfoot></table></div>';
+
+  var controls =
+    '<select class="flt' + (txPhase !== 'all' ? ' on' : '') + '" onchange="txSet(\'phase\',this.value)">' +
+      '<option value="all">All phases</option>' +
+      PHASES.map(function (p) { return '<option value="' + p + '"' + (p === txPhase ? ' selected' : '') + '>' + p + '</option>'; }).join('') +
+    '</select>' +
+    ' <input type="search" class="flt-q" placeholder="Search deals, clients, partners…" oninput="txSet(\'search\',this.value)" value="' + esc(txSearch) + '" style="min-width:220px">';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('Deal room — ' + M.asOfLabel,
+      fmtN(closing.length) + ' deals closing inside <em>thirty days</em>.',
+      'Closing checklists, drafting turns and clause positions against the firm standard, on one board. ' +
+      'Click any deal for its checklist and where it departs from precedent.',
+      ['e3e', 'iman', 'intapp']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+    secHead('Live deals', fmtN(rows.length) + ' shown') +
+    panel('The board', controls, tbl);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

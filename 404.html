@@ -24,18 +24,10 @@ renderTopbar();
    lands. GitHub Pages serves this file for any path that has no index.html,
    so an unbuilt module explains itself rather than throwing a 404. */
 var MODULES = {
-  '/law/comp/':          ['Partner compensation', 'Phase 2', 'The comp model — points, lockstep and origination blend, with the origination-versus-working-credit split as a lever and scenarios you can save.'],
-  '/law/scorecard/':     ['Partner scorecards', 'Phase 2', 'Per-partner: originations, working attribution, hours, realization, matter margin, client book, pipeline and cross-sell, banded against peer percentiles.'],
   '/law/board/':         ['Management committee pack', 'Phase 2', 'The board pack, generated. Printable, with commentary and variance drivers under every line.'],
-  '/law/transactions/':  ['Deal room', 'Phase 5', 'Live deals, closing checklists, signature-page status, turn counts and clause deviation from the firm standard.'],
-  '/law/ediscovery/':    ['eDiscovery', 'Phase 5', 'Volumes ingested, review throughput per reviewer, cost per gigabyte by vendor and the hosting spend run-rate.'],
   '/law/knowledge/':     ['Knowledge & experience', 'Phase 5', 'Precedent and experience search across the DMS and matter profiles — find the best three agreements with a given clause, or who has done this deal before.'],
   '/law/development/':   ['Development & CLE', 'Phase 6', 'Associate progression, evaluation history, CLE compliance by jurisdiction with the at-risk list, bar admissions.'],
-  '/law/retention/':     ['Retention risk', 'Phase 6', 'Attrition risk from hours dispersion, after-hours load, evaluation trend, comp position and tenure — with a cost-of-attrition calculator.'],
-  '/law/pipeline/':      ['Pitches & pipeline', 'Phase 6', 'Pitches and RFPs by stage, weighted value, win and loss with reason codes, and win rate by practice, partner and source.'],
   '/law/marketing/':     ['Marketing & rankings', 'Phase 6', 'Campaigns, events, directory submissions with deadline tracking, and thought-leadership attributed to pipeline.'],
-  '/law/intake/':        ['New business intake', 'Phase 4', 'The intake workflow with its full approval chain — conflicts, financial, risk, practice leader — and cycle-time analytics.'],
-  '/law/conflicts/':     ['Conflicts', 'Phase 4', 'Search, the hit-resolution queue, corporate-family expansion and the waivers register.'],
   '/law/insurance/':     ['Claims & professional indemnity', 'Phase 4', 'The claims and circumstances register, policy limits and incident reporting.'],
   '/law/vendors/':       ['Vendors & cost recovery', 'Phase 7', 'Vendor spend across eDiscovery, experts, court reporters and research, with the recovery capture rate.'],
   '/law/it/':            ['Systems health', 'Phase 7', 'Integration health, sync failures, licence utilization by system, ticket volume and security posture.'],
@@ -66,6 +58,14 @@ var LIVE = [
   ['/law/ocg/', 'Outside counsel guidelines'],
   ['/law/collections/', 'Collections'],
   ['/law/origination/', 'Origination & cross-sell'],
+  ['/law/comp/', 'Partner compensation'],
+  ['/law/scorecard/', 'Partner scorecards'],
+  ['/law/intake/', 'New business intake'],
+  ['/law/conflicts/', 'Conflicts'],
+  ['/law/pipeline/', 'Pitches & pipeline'],
+  ['/law/retention/', 'Retention risk'],
+  ['/law/transactions/', 'Deal room'],
+  ['/law/ediscovery/', 'eDiscovery'],
 ];
 
 function render() {

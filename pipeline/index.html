@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pitches &amp; Pipeline · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260802a">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js?v=20260802a"></script>
+<script src="/law/js/data.js?v=20260802a"></script>
+<script src="/law/js/util.js?v=20260802a"></script>
+<script src="/law/js/analytics.js?v=20260802a"></script>
+<script src="/law/js/nav.js?v=20260802a"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() (TDZ trap) */
+var plStage = 'all';
+var plPractice = 'all';
+var plSearch = '';
+function plSet(k, v) {
+  if (k === 'stage') plStage = v; if (k === 'practice') plPractice = v;
+  if (k === 'search') plSearch = (v || '').toLowerCase(); render();
+}
+
+var STAGES = [['identified', 'Identified', 0.10], ['qualified', 'Qualified', 0.25],
+              ['pitched', 'Pitched', 0.45], ['shortlist', 'Shortlisted', 0.70],
+              ['won', 'Won', 1], ['lost', 'Lost', 0]];
+var SOURCES = ['Existing client — new practice', 'Partner relationship', 'Referral from another firm',
+               'Panel review / RFP', 'Directory or ranking', 'Inbound enquiry', 'Former client returning'];
+var LOSS_REASONS = ['Price', 'Incumbent retained', 'Conflict', 'Capability gap', 'No decision made',
+                    'Relationship stronger elsewhere', 'Panel not renewed'];
+
+function PIPE() {
+  var M = window.MODEL;
+  var out = [];
+  var pool = M.clientsRanked.slice(0, 260);
+  pool.forEach(function (c, i) {
+    var s = parseInt(c.id.slice(1), 10);
+    if (s % 3 !== 0) return;
+    var st = s % 11 === 0 ? 5 : s % 7 === 0 ? 4 : (s % 4);
+    var prac = M.practices[(s + i) % M.practices.length];
+    var partner = M.partners[(s * 3) % M.partners.length];
+    var value = 60000 + (s % 47) * 38000;
+    return out.push({
+      client: c.name, industry: c.industry, existing: !!c._rev,
+      practice: prac.name, partner: partner.name,
+      stage: st, value: value, weighted: value * STAGES[st][2],
+      source: SOURCES[(s + i) % SOURCES.length],
+      loss: st === 5 ? LOSS_REASONS[(s + i) % LOSS_REASONS.length] : null,
+      opened: addDays('2026-07-31', -(10 + (s % 180))),
+      days: 10 + (s % 180),
+    });
+  });
+  return out;
+}
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+
+  var pipe = PIPE();
+  var money = can('fin');
+
+  var rows = pipe.filter(function (p) {
+    if (plStage !== 'all' && STAGES[p.stage][0] !== plStage) return false;
+    if (plPractice !== 'all' && p.practice !== plPractice) return false;
+    if (plSearch && (p.client + ' ' + p.practice + ' ' + p.partner).toLowerCase().indexOf(plSearch) === -1) return false;
+    return true;
+  });
+
+  var live = pipe.filter(function (p) { return p.stage < 4; });
+  var won = pipe.filter(function (p) { return p.stage === 4; });
+  var lost = pipe.filter(function (p) { return p.stage === 5; });
+  var decided = won.length + lost.length;
+  var winRate = decided ? won.length / decided : 0;
+  var weighted = live.reduce(function (s, p) { return s + p.weighted; }, 0);
+
+  var kpis = [
+    kpi('Live opportunities', fmtN(live.length), 'not yet decided', ''),
+    kpi('Pipeline value', money ? fmtK(live.reduce(function (s, p) { return s + p.value; }, 0)) : '—',
+      money ? 'unweighted' : 'requires financial access', ''),
+    kpi('Weighted pipeline', money ? fmtK(weighted) : '—', money ? 'by stage probability' : '', 'green',
+      'Each opportunity × its stage probability|The only pipeline number worth putting in a forecast'),
+    kpi('Win rate', fmtPct(winRate * 100), fmtN(won.length) + ' won of ' + fmtN(decided) + ' decided',
+      winRate > 0.5 ? 'green' : 'amber'),
+    kpi('Won this year', money ? fmtK(won.reduce(function (s, p) { return s + p.value; }, 0)) : fmtN(won.length),
+      money ? fmtN(won.length) + ' opportunities' : 'opportunities', 'green'),
+    kpi('Lost this year', money ? fmtK(lost.reduce(function (s, p) { return s + p.value; }, 0)) : fmtN(lost.length),
+      'top reason: ' + (lost.length ? mode(lost.map(function (p) { return p.loss; })) : '—'), 'amber'),
+    kpi('From existing clients', fmtPct(pipe.filter(function (p) { return p.existing; }).length / pipe.length * 100),
+      'cross-sell rather than new logo', '',
+      'The cheapest work to win is work for a client the firm already has|' + tie('/law/origination/', 'White space')),
+    kpi('Median age', fmtN(median(live.map(function (p) { return p.days; })), 0) + ' days', 'in the pipeline', ''),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* stage board */
+  var board = '<div class="triage">' + STAGES.slice(0, 4).map(function (st, i) {
+    var inS = pipe.filter(function (p) { return p.stage === i; });
+    var v = inS.reduce(function (s, p) { return s + p.value; }, 0);
+    return '<div class="tri"><span class="sev"></span>' +
+      '<div><div class="t">' + esc(st[1]) + ' <span style="font-size:10.5px;color:var(--color-slate-hint);font-weight:600">' +
+        fmtPct(st[2] * 100) + ' probability</span></div>' +
+      '<div class="d">' + fmtN(inS.length) + ' opportunities' + (money ? ' · weighted ' + fmtK(v * st[2]) : '') + '</div></div>' +
+      '<div class="a">' + (money ? fmtK(v) : fmtN(inS.length)) + '</div></div>';
+  }).join('') + '</div>';
+
+  /* win/loss by reason */
+  var reasons = LOSS_REASONS.map(function (r) {
+    var inR = lost.filter(function (p) { return p.loss === r; });
+    return { r: r, n: inR.length, v: inR.reduce(function (s, p) { return s + p.value; }, 0) };
+  }).sort(function (a, b) { return b.n - a.n; });
+  var maxR = Math.max.apply(null, reasons.map(function (x) { return x.n; })) || 1;
+  var lossPanel = '<div class="wf">' + reasons.map(function (x) {
+    return '<div class="wf-row" style="grid-template-columns:220px 1fr 100px"><div class="wf-l">' + esc(x.r) + '</div>' +
+      '<div class="wf-track"><div class="wf-bar leak" style="width:' + (x.n / maxR * 100).toFixed(1) + '%"></div></div>' +
+      '<div class="wf-v">' + fmtN(x.n) + (money ? ' · ' + fmtK(x.v) : '') + '</div></div>';
+  }).join('') + '</div>' +
+  '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+    'Losing on <b>price</b> and losing on <b>capability</b> are different problems with different fixes, and a firm that ' +
+    'does not record the reason cannot tell which it has. ' + tie('/law/rates/', 'Rates') +
+  '</div>';
+
+  /* by practice */
+  var pracTbl = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Practice group</th><th class="r">Live</th>' +
+    (money ? '<th class="r">Pipeline</th><th class="r">Weighted</th>' : '') +
+    '<th class="r">Won</th><th class="r">Lost</th><th class="r">Win rate</th></tr></thead><tbody>' +
+    M.practices.map(function (pr) {
+      var inP = pipe.filter(function (p) { return p.practice === pr.name; });
+      var l = inP.filter(function (p) { return p.stage < 4; });
+      var w = inP.filter(function (p) { return p.stage === 4; }).length;
+      var lo = inP.filter(function (p) { return p.stage === 5; }).length;
+      var wr = (w + lo) ? w / (w + lo) : 0;
+      return '<tr><td class="first-sticky"><b>' + esc(pr.name) + '</b></td>' +
+        '<td class="r">' + fmtN(l.length) + '</td>' +
+        (money ? '<td class="r">' + fmtK(l.reduce(function (s, p) { return s + p.value; }, 0)) + '</td>' +
+                 '<td class="r">' + fmtK(l.reduce(function (s, p) { return s + p.weighted; }, 0)) + '</td>' : '') +
+        '<td class="r" style="color:var(--color-green)">' + w + '</td>' +
+        '<td class="r" style="color:var(--wv-burgundy)">' + lo + '</td>' +
+        '<td class="r" style="color:' + (wr > 0.55 ? 'var(--color-green)' : wr < 0.4 ? 'var(--color-amber)' : '') + '"><b>' + fmtPct(wr * 100) + '</b></td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>Firm</b></td>' +
+      '<td class="r"><b>' + fmtN(live.length) + '</b></td>' +
+      (money ? '<td class="r"><b>' + fmtK(live.reduce(function (s, p) { return s + p.value; }, 0)) + '</b></td>' +
+               '<td class="r"><b>' + fmtK(weighted) + '</b></td>' : '') +
+      '<td class="r"><b>' + fmtN(won.length) + '</b></td>' +
+      '<td class="r"><b>' + fmtN(lost.length) + '</b></td>' +
+      '<td class="r"><b>' + fmtPct(winRate * 100) + '</b></td></tr></tfoot></table></div>';
+
+  /* register */
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:520px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Opportunity</th><th>Practice</th><th>Partner</th><th>Source</th>' +
+    (money ? '<th class="r">Value</th><th class="r">Weighted</th>' : '') +
+    '<th class="r">Age</th><th>Stage</th></tr></thead><tbody>' +
+    rows.slice(0, 50).map(function (p) {
+      return '<tr><td class="first-sticky"><b>' + esc(p.client) + '</b>' +
+          '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + esc(p.industry) +
+          (p.existing ? ' · <span style="color:var(--color-green);font-weight:800">EXISTING CLIENT</span>' : ' · new logo') + '</div></td>' +
+        '<td style="font-size:11.5px">' + esc(p.practice) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(p.partner) + '</td>' +
+        '<td style="font-size:11px;color:var(--color-text-muted)">' + esc(p.source) + '</td>' +
+        (money ? '<td class="r">' + fmtK(p.value) + '</td><td class="r">' + fmtK(p.weighted) + '</td>' : '') +
+        '<td class="r">' + p.days + 'd</td>' +
+        '<td>' + (p.stage === 4 ? pill('WON', 'green')
+          : p.stage === 5 ? pill('LOST — ' + p.loss.toUpperCase().slice(0, 14), 'red')
+          : pill(STAGES[p.stage][1].toUpperCase(), 'blue')) + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rows.length) + ' of ' + fmtN(pipe.length) + '</b></td>' +
+      '<td></td><td></td><td></td>' +
+      (money ? '<td class="r"><b>' + fmtK(rows.reduce(function (s, p) { return s + p.value; }, 0)) + '</b></td>' +
+               '<td class="r"><b>' + fmtK(rows.reduce(function (s, p) { return s + p.weighted; }, 0)) + '</b></td>' : '') +
+      '<td></td><td></td></tr></tfoot></table></div>';
+
+  var controls =
+    '<select class="flt' + (plStage !== 'all' ? ' on' : '') + '" onchange="plSet(\'stage\',this.value)">' +
+      '<option value="all">All stages</option>' +
+      STAGES.map(function (s) { return '<option value="' + s[0] + '"' + (s[0] === plStage ? ' selected' : '') + '>' + esc(s[1]) + '</option>'; }).join('') +
+    '</select> ' +
+    '<select class="flt' + (plPractice !== 'all' ? ' on' : '') + '" onchange="plSet(\'practice\',this.value)">' +
+      '<option value="all">All practices</option>' +
+      M.practices.map(function (p) { return '<option value="' + esc(p.name) + '"' + (p.name === plPractice ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') +
+    '</select>' +
+    ' <input type="search" class="flt-q" placeholder="Search opportunities…" oninput="plSet(\'search\',this.value)" value="' + esc(plSearch) + '" style="min-width:200px">';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    hero('Pitches &amp; pipeline — ' + M.asOfLabel,
+      fmtPct(winRate * 100) + ' win rate on <em>' + fmtN(decided) + ' decisions</em>.',
+      (money ? fmtK(weighted) + ' of weighted pipeline across ' + fmtN(live.length) + ' live opportunities. ' : '') +
+      'Every loss carries a reason code, because losing on price and losing on capability need different responses.',
+      ['crm', 'graph', 'e3e']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    secHead('The board', 'four live stages') +
+    panel('Where opportunities sit', srcChip('crm'), board, ' style="margin-bottom:18px"') +
+
+    '<div class="row2">' +
+      panel('Why we lose', srcChip('crm') + ' · reason codes', lossPanel) +
+      panel('By practice group', srcChip('crm'), pracTbl) +
+    '</div>' +
+
+    secHead('Every opportunity', fmtN(rows.length) + ' shown') +
+    panel('Register', controls, tbl);
+}
+
+function mode(a) {
+  var c = {}; a.forEach(function (x) { c[x] = (c[x] || 0) + 1; });
+  return Object.keys(c).sort(function (x, y) { return c[y] - c[x]; })[0] || '—';
+}
+function median(a) { var s = a.slice().sort(function (x, y) { return x - y; }); return s.length ? s[Math.floor(s.length / 2)] : 0; }
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

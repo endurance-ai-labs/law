@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Partner Scorecards · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260802a">
+<style>
+.pct { position: relative; height: 7px; background: var(--color-bg-3); border-radius: 99px; min-width: 80px; }
+.pct i { position: absolute; top: -3px; width: 3px; height: 13px; border-radius: 2px; background: var(--color-blue); }
+.pct b { position: absolute; top: 0; height: 7px; border-radius: 99px; background: rgba(43,74,139,.22); }
+.sc-card { background: var(--color-bg-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 16px 18px; }
+.sc-card h4 { font-size: 14px; font-weight: 800; }
+.sc-card .r2 { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 7px 0; font-size: 12.5px; }
+.sc-card .r2 + .r2 { border-top: 1px solid var(--color-border-soft); }
+</style>
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js?v=20260802a"></script>
+<script src="/law/js/data.js?v=20260802a"></script>
+<script src="/law/js/util.js?v=20260802a"></script>
+<script src="/law/js/analytics.js?v=20260802a"></script>
+<script src="/law/js/nav.js?v=20260802a"></script>
+<script>
+renderTopbar();
+
+/* state — var, before the first render() (TDZ trap) */
+var scWho = qs('p') || '';
+var scPractice = 'all';
+var scSort = 'orig';
+var scSearch = '';
+function scSet(k, v) {
+  if (k === 'practice') scPractice = v;
+  if (k === 'sort') scSort = v;
+  if (k === 'search') scSearch = (v || '').toLowerCase();
+  render();
+}
+function scOpen(id) {
+  scWho = id;
+  try { history.replaceState({}, '', '/law/scorecard/?p=' + encodeURIComponent(id)); } catch (e) {}
+  render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function scBack() { scWho = ''; try { history.replaceState({}, '', '/law/scorecard/'); } catch (e) {} render(); }
+
+function BOOK() {
+  var M = window.MODEL;
+  var byP = {};
+  M.partners.forEach(function (t) {
+    byP[t.id] = { t: t, orig: 0, work: 0, matters: 0, clients: {}, hours: 0, margin: 0,
+                  std: 0, billed: 0, wip: 0, ar: 0, practices: {} };
+  });
+  M.matters.forEach(function (m) {
+    var o = byP[m.partner];
+    if (o) {
+      o.orig += m.collected; o.matters++; o.clients[m.clientId] = 1; o.margin += m.margin;
+      o.std += m.standardValue; o.billed += m.billed; o.hours += m.hours;
+      o.wip += m.wip; o.ar += m.arTotal; o.practices[m.practice] = 1;
+    }
+    var s = parseInt(m.id.replace(/\D/g, ''), 10);
+    var pl = M.partners.filter(function (t) { return t.practice === m.practice; });
+    if (pl.length) { var w = byP[pl[s % pl.length].id]; if (w) w.work += m.collected; }
+  });
+  var out = Object.keys(byP).map(function (k) { return byP[k]; });
+  out.forEach(function (p) {
+    p.realz = p.std ? p.orig / p.std : 0;
+    p.marginPct = p.orig ? p.margin / p.orig : 0;
+    p.effRate = p.hours ? p.orig / p.hours : 0;
+    p.lockup = p.orig ? (p.wip + p.ar) / (p.orig / 365) : 0;
+    p.crossSell = Object.keys(p.practices).length;
+    p.clientCount = Object.keys(p.clients).length;
+  });
+  return out;
+}
+
+function pctile(arr, v) {
+  var s = arr.slice().sort(function (a, b) { return a - b; });
+  var below = s.filter(function (x) { return x < v; }).length;
+  return s.length ? below / s.length : 0;
+}
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+  if (!can('margin')) {
+    document.getElementById('root').innerHTML = hero('Partner scorecards', 'Restricted.',
+      'Scorecards require margin access.', ['e3e', 'adp']);
+    return;
+  }
+
+  var book = BOOK();
+  var me = currentPersona();
+  /* a group leader sees their own group only */
+  if (!can('firm') && me.group) book = book.filter(function (p) { return p.t.practice === me.group; });
+
+  var metrics = [
+    ['orig',       'Originations',        function (p) { return p.orig; },       'k'],
+    ['work',       'Working attribution', function (p) { return p.work; },       'k'],
+    ['margin',     'Contribution margin', function (p) { return p.margin; },     'k'],
+    ['marginPct',  'Margin %',            function (p) { return p.marginPct; },  'pct'],
+    ['realz',      'Realization',         function (p) { return p.realz; },      'pct'],
+    ['effRate',    'Effective rate',      function (p) { return p.effRate; },    '$'],
+    ['hours',      'Hours supervised',    function (p) { return p.hours; },      'n'],
+    ['clientCount','Clients',             function (p) { return p.clientCount; },'n'],
+    ['crossSell',  'Practices used',      function (p) { return p.crossSell; },  'n'],
+    ['lockup',     'Lockup days',         function (p) { return p.lockup; },     'd'],
+  ];
+  var fmtM = function (kind, v) {
+    return kind === 'k' ? fmtK(v) : kind === 'pct' ? fmtPct(v * 100) : kind === '$' ? fmt$(v)
+      : kind === 'd' ? fmtN(v, 0) + 'd' : fmtN(v, 0);
+  };
+
+  /* ---------- single partner ---------- */
+  if (scWho) {
+    var p = book.filter(function (x) { return x.t.id === scWho; })[0];
+    if (!p) { scWho = ''; render(); return; }
+
+    var cards = metrics.map(function (mt) {
+      var vals = book.map(mt[2]);
+      var v = mt[2](p);
+      var pc = mt[0] === 'lockup' ? 1 - pctile(vals, v) : pctile(vals, v);   /* low lockup is good */
+      var tone = pc >= 0.75 ? 'var(--color-green)' : pc <= 0.25 ? 'var(--color-amber)' : 'var(--color-blue)';
+      return '<div class="r2"><span>' + mt[1] +
+        '<div class="pct" style="margin-top:6px"><b style="left:0;width:' + (pc * 100).toFixed(0) + '%"></b>' +
+        '<i style="left:calc(' + (pc * 100).toFixed(0) + '% - 1px);background:' + tone + '"></i></div></span>' +
+        '<span style="text-align:right"><b style="font-size:14px">' + fmtM(mt[3], v) + '</b>' +
+        '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + Math.round(pc * 100) + 'th pct</div></span></div>';
+    }).join('');
+
+    var top5 = M.matters.filter(function (m) { return m.partner === p.t.id; })
+      .sort(function (a, b) { return b.collected - a.collected; }).slice(0, 8);
+
+    var kpis = [
+      kpi('Originations', fmtK(p.orig), fmtPct(p.orig / M.firm.collected * 100) + ' of the firm', ''),
+      kpi('Contribution margin', fmtPct(p.marginPct * 100), fmtK(p.margin), p.marginPct > 0.38 ? 'green' : 'amber'),
+      kpi('Realization', fmtPct(p.realz * 100), 'collected ÷ standard', p.realz > 0.87 ? 'green' : 'amber'),
+      kpi('Lockup', fmtN(p.lockup, 0) + ' days', 'on their book', p.lockup > 130 ? 'amber' : 'green'),
+      kpi('Clients', fmtN(p.clientCount), fmtN(p.matters) + ' matters', ''),
+      kpi('Practices used', fmtN(p.crossSell) + ' of 7', 'cross-sell depth', p.crossSell >= 4 ? 'green' : ''),
+      kpi('Effective rate', fmt$(p.effRate), 'per hour on their book', ''),
+      kpi('Tenure', (2026 - (p.t.classYear || 2010)) + ' years', 'as a partner', ''),
+    ];
+    while (kpis.length % 4 !== 0) kpis.pop();
+
+    document.getElementById('root').innerHTML =
+      hero(esc(p.t.practice) + ' · ' + esc(p.t.office),
+        esc(p.t.name),
+        'Every figure is computed the same way for every partner, from the same data. ' +
+        'The bars show where they sit against their peers — not against a target somebody set.',
+        ['e3e', 'adp', 'crm']) +
+      '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+      '<div class="row2">' +
+        panel('Against peers', srcChip('wv') + ' · percentile of ' + fmtN(book.length) + ' partners',
+          '<div class="sc-card">' + cards + '</div>') +
+        panel('Largest matters', srcChip('e3e'),
+          '<div class="rank">' + top5.map(function (m, i) {
+            return '<a class="rk" href="/law/matter/?id=' + encodeURIComponent(m.id) + '">' +
+              '<span class="n">' + String(i + 1).padStart(2, '0') + '</span>' +
+              '<span><span class="t">' + esc(m.name.slice(0, 40)) + '</span>' +
+              '<span class="s">' + esc(m.clientName) + ' · ' + esc(m.feeLabel) + '</span></span>' +
+              '<span class="v">' + fmtK(m.collected) + '</span></a>';
+          }).join('') + '</div>') +
+      '</div>' +
+      '<div style="margin-top:20px"><button class="fchip link" onclick="scBack()">← All partners</button> ' +
+      '<a class="fchip link" href="/law/comp/">Compensation model →</a></div>';
+    return;
+  }
+
+  /* ---------- all partners ---------- */
+  var rows = book.filter(function (p) {
+    if (scPractice !== 'all' && p.t.practice !== scPractice) return false;
+    if (scSearch && p.t.name.toLowerCase().indexOf(scSearch) === -1) return false;
+    return true;
+  });
+  var sorters = {
+    orig: function (a, b) { return b.orig - a.orig; },
+    margin: function (a, b) { return b.marginPct - a.marginPct; },
+    realz: function (a, b) { return b.realz - a.realz; },
+    lockup: function (a, b) { return b.lockup - a.lockup; },
+    clients: function (a, b) { return b.clientCount - a.clientCount; },
+  };
+  rows.sort(sorters[scSort] || sorters.orig);
+
+  var tot = M.rollup(M.matters);
+  var kpis = [
+    kpi('Partners', fmtN(book.length), can('firm') ? 'firm-wide' : esc(me.group), ''),
+    kpi('Originations', fmtK(book.reduce(function (s, p) { return s + p.orig; }, 0)), 'total credited', ''),
+    kpi('Median origination', fmtK(rows.length ? rows.slice().sort(function (a, b) { return a.orig - b.orig; })[Math.floor(rows.length / 2)].orig : 0),
+      'half are below this', ''),
+    kpi('Top decile share', fmtPct(book.slice().sort(function (a, b) { return b.orig - a.orig; })
+      .slice(0, Math.ceil(book.length / 10)).reduce(function (s, p) { return s + p.orig; }, 0) /
+      Math.max(1, book.reduce(function (s, p) { return s + p.orig; }, 0)) * 100),
+      'of originations', 'amber',
+      'The top 10% of partners by origination|Concentration here is the firm\'s single largest key-person risk'),
+    kpi('Best margin', fmtPct(Math.max.apply(null, book.map(function (p) { return p.marginPct; })) * 100), 'on their book', 'green'),
+    kpi('Widest lockup', fmtN(Math.max.apply(null, book.map(function (p) { return p.lockup; })), 0) + 'd', 'worst book', 'amber'),
+    kpi('Deepest cross-sell', fmtN(Math.max.apply(null, book.map(function (p) { return p.crossSell; }))) + ' of 7', 'practices on one book', 'green'),
+    kpi('Firm realization', fmtPct(tot.collected / tot.standardValue * 100), 'the benchmark', ''),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:620px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Partner</th><th>Practice</th><th class="r">Originated</th><th class="r">Worked</th>' +
+    '<th class="r">Margin</th><th class="r">Realization</th><th class="r">Eff. rate</th><th class="r">Lockup</th>' +
+    '<th class="r">Clients</th><th class="r">Practices</th></tr></thead><tbody>' +
+    rows.slice(0, 60).map(function (p) {
+      return '<tr><td class="first-sticky">' +
+          '<a href="#" onclick="event.preventDefault();scOpen(\'' + p.t.id + '\')" style="color:var(--color-blue);text-decoration:none"><b>' + esc(p.t.name) + '</b></a>' +
+          '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + esc(p.t.office) + ' · ' + fmtN(p.matters) + ' matters</div></td>' +
+        '<td style="font-size:11.5px">' + esc(p.t.practice) + '</td>' +
+        '<td class="r"><b>' + fmtK(p.orig) + '</b></td>' +
+        '<td class="r" style="color:var(--color-text-muted)">' + fmtK(p.work) + '</td>' +
+        '<td class="r" style="color:' + (p.marginPct > 0.42 ? 'var(--color-green)' : p.marginPct < 0.3 ? 'var(--color-amber)' : '') + '">' + fmtPct(p.marginPct * 100) + '</td>' +
+        '<td class="r">' + fmtPct(p.realz * 100) + '</td>' +
+        '<td class="r">' + fmt$(p.effRate) + '</td>' +
+        '<td class="r" style="color:' + (p.lockup > 130 ? 'var(--color-amber)' : '') + '">' + fmtN(p.lockup, 0) + 'd</td>' +
+        '<td class="r">' + fmtN(p.clientCount) + '</td>' +
+        '<td class="r">' + p.crossSell + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rows.length) + ' partners</b></td><td></td>' +
+      '<td class="r"><b>' + fmtK(rows.reduce(function (s, p) { return s + p.orig; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(rows.reduce(function (s, p) { return s + p.work; }, 0)) + '</b></td>' +
+      '<td></td><td></td><td></td><td></td>' +
+      '<td class="r"><b>' + fmtN(rows.reduce(function (s, p) { return s + p.clientCount; }, 0)) + '</b></td><td></td></tr></tfoot></table></div>';
+
+  var controls =
+    '<select class="flt' + (scPractice !== 'all' ? ' on' : '') + '" onchange="scSet(\'practice\',this.value)">' +
+      '<option value="all">All practices</option>' +
+      M.practices.map(function (x) { return '<option value="' + esc(x.name) + '"' + (x.name === scPractice ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') +
+    '</select> ' +
+    '<select class="flt" onchange="scSet(\'sort\',this.value)">' +
+      [['orig', 'Sort: originations'], ['margin', 'Sort: margin'], ['realz', 'Sort: realization'],
+       ['lockup', 'Sort: worst lockup'], ['clients', 'Sort: clients']]
+        .map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === scSort ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+    '</select>' +
+    ' <input type="search" class="flt-q" placeholder="Search partners…" oninput="scSet(\'search\',this.value)" value="' + esc(scSearch) + '" style="min-width:180px">';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    hero('Partner scorecards — ' + M.asOfLabel,
+      fmtN(book.length) + ' partners, <em>scored the same way</em>.',
+      'Originations, working attribution, margin, realization, lockup and cross-sell depth — computed identically for everyone ' +
+      'from the same data. Click any partner for their peer percentiles.',
+      ['e3e', 'adp', 'crm', 'wv']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+    secHead('Every partner', fmtN(rows.length) + ' shown') +
+    panel('Scorecards', controls, tbl);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eDiscovery · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260802a">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js?v=20260802a"></script>
+<script src="/law/js/data.js?v=20260802a"></script>
+<script src="/law/js/util.js?v=20260802a"></script>
+<script src="/law/js/analytics.js?v=20260802a"></script>
+<script src="/law/js/nav.js?v=20260802a"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() (TDZ trap) */
+var edVendor = 'all';
+var edSearch = '';
+function edSet(k, v) { if (k === 'vendor') edVendor = v; if (k === 'search') edSearch = (v || '').toLowerCase(); render(); }
+
+var VENDORS = [
+  { n: 'RelativityOne', host: 12.50, proc: 42, review: 0.09, chip: 'rel' },
+  { n: 'Everlaw',       host: 10.00, proc: 36, review: 0.07, chip: 'rel' },
+  { n: 'DISCO',         host: 14.00, proc: 38, review: 0.08, chip: 'rel' },
+];
+
+function WORKSPACES() {
+  var M = window.MODEL;
+  return scopeMatters(M.matters)
+    .filter(function (m) { return (m.practiceId === 'LIT' || m.practiceId === 'REG') && m.active && m.hours > 60; })
+    .sort(function (a, b) { return b.hours - a.hours; })
+    .slice(0, 45)
+    .map(function (m) {
+      var s = parseInt(m.id.replace(/\D/g, ''), 10);
+      var v = VENDORS[s % VENDORS.length];
+      var gb = 20 + (s % 780);
+      var docs = Math.round(gb * (5200 + (s % 2400)));
+      var reviewed = Math.round(docs * (0.25 + ((s % 70) / 100)));
+      var reviewers = 2 + (s % 9);
+      var monthsHosted = 2 + (s % 22);
+      var hosting = gb * v.host * monthsHosted;
+      var processing = gb * v.proc;
+      var reviewCost = reviewed * v.review;
+      var priv = Math.round(reviewed * (0.008 + (s % 20) / 1000));
+      return { m: m, v: v, gb: gb, docs: docs, reviewed: reviewed, reviewers: reviewers,
+               monthsHosted: monthsHosted, hosting: hosting, processing: processing,
+               reviewCost: reviewCost, total: hosting + processing + reviewCost,
+               priv: priv, perGB: (hosting + processing + reviewCost) / gb,
+               rate: reviewed / Math.max(1, reviewers) / Math.max(1, monthsHosted * 21 * 8),
+               produced: Math.round(reviewed * (0.1 + (s % 25) / 100)),
+               stale: monthsHosted > 14 && reviewed / docs > 0.9 };
+    });
+}
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+  var money = can('fin');
+
+  var ws = WORKSPACES();
+  var rows = ws.filter(function (w) {
+    if (edVendor !== 'all' && w.v.n !== edVendor) return false;
+    if (edSearch && (w.m.clientName + ' ' + w.m.name).toLowerCase().indexOf(edSearch) === -1) return false;
+    return true;
+  });
+
+  var totGB = ws.reduce(function (s, w) { return s + w.gb; }, 0);
+  var totDocs = ws.reduce(function (s, w) { return s + w.docs; }, 0);
+  var totCost = ws.reduce(function (s, w) { return s + w.total; }, 0);
+  var totHost = ws.reduce(function (s, w) { return s + w.hosting; }, 0);
+  var stale = ws.filter(function (w) { return w.stale; });
+  var staleCost = stale.reduce(function (s, w) { return s + w.gb * w.v.host * 12; }, 0);
+  var monthlyRunRate = ws.reduce(function (s, w) { return s + w.gb * w.v.host; }, 0);
+
+  var kpis = [
+    kpi('Active workspaces', fmtN(ws.length), 'across ' + VENDORS.length + ' platforms', ''),
+    kpi('Data under management', fmtN(totGB, 0) + ' GB', fmtN(totDocs / 1e6, 1) + 'M documents', ''),
+    kpi('Hosting run-rate', money ? fmtK(monthlyRunRate) + '/mo' : '—',
+      money ? fmtK(monthlyRunRate * 12) + ' a year' : 'requires financial access', 'amber',
+      'Hosting is charged per gigabyte per month and never stops|It is the only line in a litigation budget that grows while nobody is working'),
+    kpi('Total spend to date', money ? fmtK(totCost) : '—', money ? 'hosting + processing + review' : '', ''),
+    kpi('Blended cost per GB', money ? fmt$(totCost / totGB) : '—', money ? 'all-in' : '', ''),
+    kpi('Dormant workspaces', fmtN(stale.length), 'review complete, still hosted', stale.length ? 'amber' : 'green',
+      'Review is finished and the data is still accruing hosting charges|Nobody owns the decision to close them'),
+    kpi('Cost of leaving them open', money ? fmtK(staleCost) : '—', money ? 'a year' : '', stale.length ? 'amber' : 'green'),
+    kpi('Privilege log entries', fmtN(ws.reduce(function (s, w) { return s + w.priv; }, 0)), 'across all matters', ''),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* vendor comparison — the negotiating position */
+  var vendTbl = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Platform</th><th class="r">Workspaces</th><th class="r">GB</th>' +
+    '<th class="r">Hosting $/GB/mo</th><th class="r">Processing $/GB</th><th class="r">Review $/doc</th>' +
+    (money ? '<th class="r">Spend to date</th><th class="r">Blended $/GB</th>' : '') + '</tr></thead><tbody>' +
+    VENDORS.map(function (v) {
+      var inV = ws.filter(function (w) { return w.v.n === v.n; });
+      var gb = inV.reduce(function (s, w) { return s + w.gb; }, 0);
+      var cost = inV.reduce(function (s, w) { return s + w.total; }, 0);
+      return '<tr><td class="first-sticky"><b>' + esc(v.n) + '</b></td>' +
+        '<td class="r">' + fmtN(inV.length) + '</td>' +
+        '<td class="r">' + fmtN(gb, 0) + '</td>' +
+        '<td class="r">' + fmt$2(v.host) + '</td>' +
+        '<td class="r">' + fmt$(v.proc) + '</td>' +
+        '<td class="r">' + fmt$2(v.review) + '</td>' +
+        (money ? '<td class="r"><b>' + fmtK(cost) + '</b></td>' +
+                 '<td class="r">' + (gb ? fmt$(cost / gb) : '—') + '</td>' : '') +
+        '</tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>All platforms</b></td>' +
+      '<td class="r"><b>' + fmtN(ws.length) + '</b></td>' +
+      '<td class="r"><b>' + fmtN(totGB, 0) + '</b></td><td></td><td></td><td></td>' +
+      (money ? '<td class="r"><b>' + fmtK(totCost) + '</b></td>' +
+               '<td class="r"><b>' + fmt$(totCost / totGB) + '</b></td>' : '') +
+      '</tr></tfoot></table></div>' +
+    '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+      'Rates differ by up to <b>40%</b> between platforms for the same work. Firms rarely compare them because the invoices ' +
+      'arrive in different formats, against different matters, in different months — which is exactly the problem a single ' +
+      'model solves. This table is a negotiating position.' +
+    '</div>';
+
+  /* workspace register */
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:560px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Matter</th><th>Client</th><th>Platform</th><th class="r">GB</th>' +
+    '<th class="r">Documents</th><th class="r">Reviewed</th><th class="r">Reviewers</th><th class="r">Months hosted</th>' +
+    (money ? '<th class="r">Hosting</th><th class="r">Total</th><th class="r">$/GB</th>' : '') +
+    '<th>Status</th></tr></thead><tbody>' +
+    rows.slice(0, 45).map(function (w) {
+      var pct = w.reviewed / w.docs;
+      return '<tr><td class="first-sticky">' +
+          '<a href="/law/matter/?id=' + encodeURIComponent(w.m.id) + '" style="color:var(--color-blue);text-decoration:none"><b>' +
+          esc(w.m.name.slice(0, 34)) + '</b></a></td>' +
+        '<td style="font-size:11.5px">' + esc(w.m.clientName) + '</td>' +
+        '<td style="font-size:11px">' + esc(w.v.n) + '</td>' +
+        '<td class="r">' + fmtN(w.gb, 0) + '</td>' +
+        '<td class="r">' + fmtN(w.docs) + '</td>' +
+        '<td class="r">' + fmtPct(pct * 100) + '</td>' +
+        '<td class="r">' + w.reviewers + '</td>' +
+        '<td class="r" style="color:' + (w.monthsHosted > 14 ? 'var(--color-amber)' : '') + '">' + w.monthsHosted + '</td>' +
+        (money ? '<td class="r">' + fmtK(w.hosting) + '</td>' +
+                 '<td class="r"><b>' + fmtK(w.total) + '</b></td>' +
+                 '<td class="r">' + fmt$(w.perGB) + '</td>' : '') +
+        '<td>' + (w.stale ? pill('CLOSE IT', 'amber') : pct > 0.9 ? pill('REVIEW DONE', 'green') : pill('IN REVIEW', 'blue')) + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rows.length) + ' of ' + fmtN(ws.length) + '</b></td>' +
+      '<td></td><td></td>' +
+      '<td class="r"><b>' + fmtN(rows.reduce(function (s, w) { return s + w.gb; }, 0), 0) + '</b></td>' +
+      '<td class="r"><b>' + fmtN(rows.reduce(function (s, w) { return s + w.docs; }, 0)) + '</b></td>' +
+      '<td></td><td></td><td></td>' +
+      (money ? '<td class="r"><b>' + fmtK(rows.reduce(function (s, w) { return s + w.hosting; }, 0)) + '</b></td>' +
+               '<td class="r"><b>' + fmtK(rows.reduce(function (s, w) { return s + w.total; }, 0)) + '</b></td><td></td>' : '') +
+      '<td></td></tr></tfoot></table></div>';
+
+  var controls =
+    '<select class="flt' + (edVendor !== 'all' ? ' on' : '') + '" onchange="edSet(\'vendor\',this.value)">' +
+      '<option value="all">All platforms</option>' +
+      VENDORS.map(function (v) { return '<option value="' + esc(v.n) + '"' + (v.n === edVendor ? ' selected' : '') + '>' + esc(v.n) + '</option>'; }).join('') +
+    '</select>' +
+    ' <input type="search" class="flt-q" placeholder="Search matters, clients…" oninput="edSet(\'search\',this.value)" value="' + esc(edSearch) + '" style="min-width:200px">';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('eDiscovery — ' + M.asOfLabel,
+      money ? fmtK(monthlyRunRate) + ' a month <em>while nobody works</em>.'
+            : fmtN(totGB, 0) + ' GB under <em>management</em>.',
+      'Hosting is charged per gigabyte per month and does not stop when review does. ' +
+      fmtN(stale.length) + ' workspaces have finished review and are still accruing charges' +
+      (money ? ' — about ' + fmtK(staleCost) + ' a year' : '') + '.',
+      ['rel', 'e3e', 'wv']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    (stale.length ? '<div class="wall-note"><span>⚠</span><div><b>' + fmtN(stale.length) +
+      ' workspaces are finished and still hosted.</b> Review is complete and the data continues to accrue per-gigabyte charges. ' +
+      'Nobody owns the decision to close them, because the hosting invoice and the review status have never been on the same screen.</div></div>' : '') +
+
+    secHead('Platform economics', 'the negotiating position') +
+    panel('By platform', srcChip('rel'), vendTbl, ' style="margin-bottom:18px"') +
+
+    secHead('Workspaces', fmtN(rows.length) + ' shown') +
+    panel('Register', controls, tbl);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

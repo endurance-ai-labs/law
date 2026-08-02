@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New Business Intake · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260802a">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js?v=20260802a"></script>
+<script src="/law/js/data.js?v=20260802a"></script>
+<script src="/law/js/util.js?v=20260802a"></script>
+<script src="/law/js/analytics.js?v=20260802a"></script>
+<script src="/law/js/nav.js?v=20260802a"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() (TDZ trap) */
+var ikStage = 'all';
+var ikSearch = '';
+function ikSet(k, v) { if (k === 'stage') ikStage = v; if (k === 'search') ikSearch = (v || '').toLowerCase(); render(); }
+
+var STAGES = [
+  ['submitted',  'Submitted',            'Partner opens the request with client, scope and estimated value'],
+  ['conflicts',  'Conflicts search',     'Corporate family expanded; hits routed for resolution'],
+  ['financial',  'Financial review',     'Credit check, rate schedule and billing arrangement confirmed'],
+  ['risk',       'Risk review',          'Guidelines, wall requirements and jurisdiction issues assessed'],
+  ['leader',     'Practice leader',      'Capacity and strategic fit confirmed'],
+  ['open',       'Matter opened',        'Number issued; engagement letter sent'],
+];
+
+function REQUESTS() {
+  var M = window.MODEL;
+  var recent = scopeMatters(M.matters).filter(function (m) { return m.opened >= '2026-04-01'; })
+    .sort(function (a, b) { return a.opened < b.opened ? 1 : -1; }).slice(0, 70);
+  return recent.map(function (m, i) {
+    var s = parseInt(m.id.replace(/\D/g, ''), 10);
+    var stage = i < 4 ? (s % 5) : 5;                    /* the newest are mid-flight */
+    var hits = (s % 11 === 0) ? 3 : (s % 5 === 0) ? 1 : 0;
+    var cycle = 1 + (s % 14) + (hits ? hits * 2 : 0);
+    var newClient = s % 6 === 0;
+    return { m: m, stage: stage, hits: hits, cycle: cycle, newClient: newClient,
+             value: m.standardValue, submitted: addDays(m.opened, -cycle),
+             requester: m.partnerName,
+             blocked: stage < 5 && hits > 1 };
+  });
+}
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+  if (!can('risk') && !can('fin')) {
+    document.getElementById('root').innerHTML = hero('New business intake', 'Restricted.',
+      'Intake is visible to risk and finance roles.', ['intapp']);
+    return;
+  }
+
+  var reqs = REQUESTS();
+  var rows = reqs.filter(function (r) {
+    if (ikStage !== 'all' && STAGES[r.stage][0] !== ikStage) return false;
+    if (ikSearch && (r.m.clientName + ' ' + r.m.name + ' ' + r.requester).toLowerCase().indexOf(ikSearch) === -1) return false;
+    return true;
+  });
+
+  var inFlight = reqs.filter(function (r) { return r.stage < 5; });
+  var opened = reqs.filter(function (r) { return r.stage === 5; });
+  var withHits = reqs.filter(function (r) { return r.hits > 0; });
+  var blocked = reqs.filter(function (r) { return r.blocked; });
+  var avgCycle = opened.length ? opened.reduce(function (s, r) { return s + r.cycle; }, 0) / opened.length : 0;
+  var cleanCycle = opened.filter(function (r) { return !r.hits; });
+  var avgClean = cleanCycle.length ? cleanCycle.reduce(function (s, r) { return s + r.cycle; }, 0) / cleanCycle.length : 0;
+
+  var kpis = [
+    kpi('Requests this quarter', fmtN(reqs.length), 'submitted since April', ''),
+    kpi('In flight', fmtN(inFlight.length), 'not yet opened', inFlight.length > 8 ? 'amber' : ''),
+    kpi('Average cycle time', fmtN(avgCycle, 1) + ' days', 'submission to matter number', avgCycle > 7 ? 'amber' : 'green',
+      'Every day here is a day the firm cannot bill|Partners route around slow intake, which is how unvetted work gets started'),
+    kpi('Clean requests', fmtN(avgClean, 1) + ' days', 'no conflict hits', 'green',
+      'The floor the process can hit when nothing needs resolving'),
+    kpi('With conflict hits', fmtN(withHits.length), fmtPct(withHits.length / reqs.length * 100) + ' of requests', ''),
+    kpi('Blocked on resolution', fmtN(blocked.length), 'waiting on a decision', blocked.length ? 'amber' : 'green'),
+    kpi('New clients', fmtN(reqs.filter(function (r) { return r.newClient; }).length), 'first matter for the firm', ''),
+    kpi('Value in flight', can('fin') ? fmtK(inFlight.reduce(function (s, r) { return s + r.value; }, 0)) : '—',
+      can('fin') ? 'estimated, not yet opened' : 'requires financial access', ''),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* funnel */
+  var funnel = '<div class="triage">' + STAGES.map(function (st, i) {
+    var atOrPast = reqs.filter(function (r) { return r.stage >= i; }).length;
+    var here = reqs.filter(function (r) { return r.stage === i; }).length;
+    return '<div class="tri ' + (here > 3 ? 'red' : here ? '' : 'green') + '"><span class="sev"></span>' +
+      '<div><div class="t">' + esc(st[1]) + '</div><div class="d">' + esc(st[2]) + '</div></div>' +
+      '<div class="a">' + (here ? here + ' here' : '—') + '<div style="font-size:10.5px;color:var(--color-slate-hint);font-weight:600">' +
+        fmtN(atOrPast) + ' reached</div></div></div>';
+  }).join('') + '</div>';
+
+  /* the queue */
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:560px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Request</th><th>Client</th><th>Requesting partner</th><th>Practice</th>' +
+    (can('fin') ? '<th class="r">Est. value</th>' : '') +
+    '<th class="r">Conflict hits</th><th class="r">Days open</th><th>Stage</th><th>Status</th></tr></thead><tbody>' +
+    rows.slice(0, 50).map(function (r) {
+      return '<tr><td class="first-sticky"><b>' + esc(r.m.name.slice(0, 40)) + '</b>' +
+          '<div style="font-size:10.5px;color:var(--color-slate-hint)">submitted ' + fmtDate(r.submitted) +
+          (r.newClient ? ' · <span style="color:var(--color-blue);font-weight:800">NEW CLIENT</span>' : '') + '</div></td>' +
+        '<td style="font-size:11.5px">' + esc(r.m.clientName) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(r.requester) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(r.m.practice) + '</td>' +
+        (can('fin') ? '<td class="r">' + fmtK(r.value) + '</td>' : '') +
+        '<td class="r" style="color:' + (r.hits > 1 ? 'var(--color-red)' : r.hits ? 'var(--color-amber)' : 'var(--color-slate-hint)') + '">' +
+          (r.hits || '—') + '</td>' +
+        '<td class="r" style="color:' + (r.cycle > 10 ? 'var(--color-amber)' : '') + '">' + r.cycle + '</td>' +
+        '<td style="font-size:11.5px">' + esc(STAGES[r.stage][1]) + '</td>' +
+        '<td>' + (r.stage === 5 ? pill('OPENED', 'green') : r.blocked ? pill('BLOCKED', 'red') : pill('IN FLIGHT', 'amber')) + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rows.length) + ' of ' + fmtN(reqs.length) + '</b></td>' +
+      '<td></td><td></td><td></td>' + (can('fin') ? '<td class="r"><b>' + fmtK(rows.reduce(function (s, r) { return s + r.value; }, 0)) + '</b></td>' : '') +
+      '<td class="r"><b>' + fmtN(rows.reduce(function (s, r) { return s + r.hits; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtN(rows.reduce(function (s, r) { return s + r.cycle; }, 0) / Math.max(1, rows.length), 1) + ' avg</b></td>' +
+      '<td></td><td></td></tr></tfoot></table></div>';
+
+  /* live approval chain on the oldest in-flight request */
+  var target = inFlight.sort(function (a, b) { return b.cycle - a.cycle; })[0];
+  var chainPanel = target ? panel('Open request — ' + esc(target.m.name.slice(0, 40)),
+    'submitted ' + fmtDate(target.submitted) + ' · ' + target.cycle + ' days open · ' + esc(target.requester),
+    approvalChain('intake-' + target.m.id, [
+      { role: 'gc',   label: 'Conflicts cleared — corporate family expanded, ' + (target.hits || 'no') + ' hit' + (target.hits === 1 ? '' : 's') },
+      { role: 'cfo',  label: 'Financial review — credit, rates and billing arrangement confirmed' },
+      { role: 'gc',   label: 'Risk review — guidelines, walls and jurisdiction' },
+      { role: 'pgl',  label: 'Practice leader — capacity and strategic fit' },
+      { role: 'ops',  label: 'Matter opened — number issued and engagement letter sent' },
+    ]), ' style="margin-bottom:18px"') : '';
+
+  var controls =
+    '<select class="flt' + (ikStage !== 'all' ? ' on' : '') + '" onchange="ikSet(\'stage\',this.value)">' +
+      '<option value="all">All stages</option>' +
+      STAGES.map(function (s) { return '<option value="' + s[0] + '"' + (s[0] === ikStage ? ' selected' : '') + '>' + esc(s[1]) + '</option>'; }).join('') +
+    '</select>' +
+    ' <input type="search" class="flt-q" placeholder="Search requests, clients, partners…" oninput="ikSet(\'search\',this.value)" value="' + esc(ikSearch) + '" style="min-width:220px">';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('New business intake — ' + M.asOfLabel,
+      fmtN(avgCycle, 1) + ' days from <em>request to matter number</em>.',
+      'A clean request clears in ' + fmtN(avgClean, 1) + ' days; conflicts resolution is what stretches the rest. ' +
+      'Every day here is a day the firm cannot bill — and slow intake is why partners start work before a matter exists.',
+      ['intapp', 'e3e', 'crm']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    secHead('The funnel', 'six stages') +
+    panel('Where requests sit', srcChip('intapp'), funnel, ' style="margin-bottom:18px"') +
+
+    chainPanel +
+
+    secHead('The queue', fmtN(rows.length) + ' shown') +
+    panel('Requests', controls, tbl);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

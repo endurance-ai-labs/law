@@ -39,9 +39,13 @@ Public landing at **`/welcome/`**. Signed-out visitors hitting `/` are redirecte
 | 5 | `/litigation/` | ✅ |
 | 6 | `/capacity/` + `/origination/` | ✅ |
 | 7 | `/collections/` | ✅ |
-| 3–8 | Remaining 11 pages | pending — see `build-spec/OUTLINE.md` §6 |
+| 2 | `/comp/` + `/scorecard/` | ✅ |
+| 4 | `/intake/` + `/conflicts/` | ✅ |
+| 5 | `/transactions/` + `/ediscovery/` | ✅ |
+| 6 | `/pipeline/` + `/retention/` | ✅ |
+| — | Remaining 5: `/board/` `/knowledge/` `/development/` `/marketing/` `/vendors/` `/it/` `/admin/` `/insurance/` | pending — see `build-spec/OUTLINE.md` §6 |
 
-**Live pages (25):** `/` · `/welcome/` · `/revenue/` · `/clients/` · `/matters/` · `/afa/` · `/financials/` · `/lockup/` · `/rates/` · `/budget/` · `/billing/` · `/profitability/`
+**Live pages (33):** `/` · `/welcome/` · `/revenue/` · `/clients/` · `/matters/` · `/afa/` · `/financials/` · `/lockup/` · `/rates/` · `/budget/` · `/billing/` · `/profitability/`
 
 Every other nav route resolves to `404.html`, which names the module, what it will hold and which phase it lands in — nothing dead-ends.
 

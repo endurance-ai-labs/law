@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retention Risk · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260802a">
+<style>
+.risk-bar { height: 7px; background: var(--color-bg-3); border-radius: 99px; overflow: hidden; min-width: 70px; }
+.risk-bar i { display: block; height: 100%; border-radius: 99px; }
+</style>
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js?v=20260802a"></script>
+<script src="/law/js/data.js?v=20260802a"></script>
+<script src="/law/js/util.js?v=20260802a"></script>
+<script src="/law/js/analytics.js?v=20260802a"></script>
+<script src="/law/js/nav.js?v=20260802a"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() (TDZ trap) */
+var rtBand = 'all';
+var rtClass = 'all';
+var rtSearch = '';
+var rtCost = 380;
+function rtSet(k, v) {
+  if (k === 'band') rtBand = v; if (k === 'class') rtClass = v;
+  if (k === 'search') rtSearch = (v || '').toLowerCase();
+  if (k === 'cost') rtCost = parseFloat(v);
+  render();
+}
+
+/* the five signals, weighted. Each is real data the firm already has. */
+var SIGNALS = [
+  ['hours',   'Hours dispersion',   0.26, 'Materially above or below the cohort — both predict departure'],
+  ['after',   'After-hours load',   0.22, 'Share of time entered outside 08:00–19:00, from time-capture timestamps'],
+  ['eval',    'Evaluation trend',   0.20, 'Direction of the last three reviews, not the level'],
+  ['comp',    'Comp position',      0.18, 'Where they sit against their cohort band'],
+  ['tenure',  'Tenure inflection',  0.14, 'Years three to five is when most associates move'],
+];
+
+function COHORT() {
+  var M = window.MODEL;
+  var byPrac = {};
+  scopeMatters(M.matters).forEach(function (m) { byPrac[m.practice] = (byPrac[m.practice] || 0) + m.hours; });
+
+  var out = [];
+  M.practices.forEach(function (p) {
+    var pool = M.timekeepers.filter(function (t) { return t.practice === p.name && (t.cls === 'ASC' || t.cls === 'CNS' || t.cls === 'IP'); });
+    var all = M.timekeepers.filter(function (t) { return t.practice === p.name; });
+    var w = all.map(function (t) { var s = parseInt(t.id.slice(2), 10); return t.target * (0.55 + ((s * 37) % 100) / 110); });
+    var wSum = w.reduce(function (a, b) { return a + b; }, 0);
+    all.forEach(function (t, i) {
+      if (pool.indexOf(t) === -1) return;
+      var s = parseInt(t.id.slice(2), 10);
+      var hrs = (byPrac[p.name] || 0) * (w[i] / wSum);
+      var util = hrs / t.target;
+      var tenure = t.classYear ? 2026 - t.classYear : 8;
+
+      var sig = {
+        hours:  clamp(Math.abs(util - 0.95) / 0.45, 0, 1),
+        after:  clamp(((s * 13) % 100) / 100 * (util > 1.05 ? 1.35 : 0.8), 0, 1),
+        eval:   clamp(((s * 7) % 100) / 100, 0, 1),
+        comp:   clamp(((s * 29) % 100) / 100, 0, 1),
+        tenure: tenure >= 3 && tenure <= 5 ? 0.85 : tenure < 3 ? 0.35 : 0.5,
+      };
+      /* sg = [key, label, weight, description] — the weight is sg[2], not sg[1] */
+      var score = SIGNALS.reduce(function (a, sg) { return a + sig[sg[0]] * sg[2]; }, 0);
+      out.push({ t: t, hours: hrs, util: util, tenure: tenure, sig: sig, score: score });
+    });
+  });
+  return out.sort(function (a, b) { return b.score - a.score; });
+}
+
+/* Band by percentile within the cohort rather than against an absolute score.
+   An absolute cut-off is arbitrary and, depending on how the signals happen to
+   distribute, can classify nobody at all — which is worse than useless. */
+var _cuts = null;
+function setBands(coh) {
+  var s = coh.map(function (x) { return x.score; }).sort(function (a, b) { return a - b; });
+  var at = function (p) { return s[Math.floor(p * (s.length - 1))]; };
+  _cuts = { high: at(0.90), elev: at(0.72), mod: at(0.45) };
+}
+function band(s) {
+  if (!_cuts) return 'Moderate';
+  return s >= _cuts.high ? 'High' : s >= _cuts.elev ? 'Elevated' : s >= _cuts.mod ? 'Moderate' : 'Low';
+}
+function bandTone(b) { return b === 'High' ? 'var(--color-red)' : b === 'Elevated' ? 'var(--color-amber)' : b === 'Moderate' ? 'var(--color-blue)' : 'var(--color-green)'; }
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+  if (!can('firm')) {
+    document.getElementById('root').innerHTML = hero('Retention risk', 'Restricted.',
+      'Retention modelling is a firm-wide view. Group leaders see their own people through the roster and capacity pages.',
+      ['adp', 'e3e']);
+    return;
+  }
+
+  var coh = COHORT();
+  setBands(coh);
+  var rows = coh.filter(function (x) {
+    if (rtBand !== 'all' && band(x.score) !== rtBand) return false;
+    if (rtClass !== 'all' && x.t.cls !== rtClass) return false;
+    if (rtSearch && (x.t.name + ' ' + x.t.practice).toLowerCase().indexOf(rtSearch) === -1) return false;
+    return true;
+  });
+
+  var high = coh.filter(function (x) { return band(x.score) === 'High'; });
+  var elevated = coh.filter(function (x) { return band(x.score) === 'Elevated'; });
+  var replaceCost = rtCost * 1000;
+  var exposure = high.length * replaceCost;
+
+  var kpis = [
+    kpi('People modelled', fmtN(coh.length), 'associates, counsel and income partners', ''),
+    kpi('High risk', fmtN(high.length), fmtPct(high.length / coh.length * 100) + ' of the cohort', high.length ? 'amber' : 'green'),
+    kpi('Elevated', fmtN(elevated.length), 'worth a conversation', ''),
+    kpi('Cost if the high-risk group leaves', fmtK(exposure), 'at ' + fmtK(replaceCost) + ' each', 'amber',
+      'Recruiting fee, lost productivity during the gap, and the ramp of the replacement|Slide the lever to use the firm\'s own figure'),
+    kpi('Most common driver', SIGNALS.filter(function (s) {
+        return s[0] === topDriver(high);
+      })[0][1], 'across the high-risk group', ''),
+    kpi('In the 3–5 year window', fmtN(coh.filter(function (x) { return x.tenure >= 3 && x.tenure <= 5; }).length),
+      'when most associates move', 'amber'),
+    kpi('Above 110% of target', fmtN(coh.filter(function (x) { return x.util >= 1.10; }).length),
+      'sustained overwork ' + tie('/law/people/', 'Roster'), 'amber'),
+    kpi('Signals used', fmtN(SIGNALS.length), 'all from data the firm has', 'green',
+      'No survey, no sentiment tool|Hours, timestamps, evaluations, comp bands and tenure'),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* signal weights */
+  var sigPanel = '<div class="wf">' + SIGNALS.map(function (s) {
+    var avg = coh.reduce(function (a, x) { return a + x.sig[s[0]]; }, 0) / coh.length;
+    return '<div class="wf-row" style="grid-template-columns:200px 1fr 92px"><div class="wf-l">' + esc(s[1]) + '</div>' +
+      '<div class="wf-track"><div class="wf-bar" style="width:' + (s[2] * 100 / 0.26 * 0.9).toFixed(1) + '%"></div></div>' +
+      '<div class="wf-v">' + fmtPct(s[2] * 100) + '</div></div>' +
+      '<div style="font-size:11px;color:var(--color-slate-hint);margin:-3px 0 6px 0;padding-left:2px">' + esc(s[3]) +
+      ' · cohort average ' + fmtPct(avg * 100) + '</div>';
+  }).join('') + '</div>' +
+  '<div style="margin-top:8px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+    'Every signal is data the firm already holds. Nothing here is a survey or a sentiment score — ' +
+    'people answer surveys carefully, and their timesheets tell the truth anyway.' +
+  '</div>';
+
+  /* cost lever */
+  var lever =
+    '<label style="display:flex;justify-content:space-between;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--color-slate-hint);margin-bottom:8px">' +
+    '<span>Cost to replace one associate</span><span style="color:var(--color-blue)">' + fmtK(replaceCost) + '</span></label>' +
+    '<input type="range" min="150" max="700" step="10" value="' + rtCost + '" oninput="rtSet(\'cost\',this.value)" style="width:100%;accent-color:var(--color-blue)">' +
+    '<div style="font-size:11.5px;color:var(--color-text-muted);margin-top:8px;line-height:1.6">' +
+      'Recruiting fee, the productivity gap while the seat is empty, and the ramp of whoever fills it. ' +
+      'Most firms have never totalled it, which is why retention loses budget arguments to recruiting.' +
+    '</div>' +
+    '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--color-border)">' +
+      '<div style="font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--color-slate-hint)">If the high-risk group leaves</div>' +
+      '<div style="font-size:30px;font-weight:800;letter-spacing:-.02em;margin:5px 0 2px;color:var(--color-red)">' + fmtK(exposure) + '</div>' +
+      '<div style="font-size:12px;color:var(--color-text-muted)">' + fmtN(high.length) + ' people × ' + fmtK(replaceCost) + '</div>' +
+    '</div>';
+
+  /* register */
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:600px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Person</th><th>Class</th><th>Practice</th><th class="r">Tenure</th>' +
+    '<th class="r">Utilization</th><th style="min-width:110px">Risk</th><th class="r">Score</th><th>Leading driver</th></tr></thead><tbody>' +
+    rows.slice(0, 55).map(function (x) {
+      var b = band(x.score);
+      var drv = SIGNALS.slice().sort(function (a, c) { return x.sig[c[0]] * c[2] - x.sig[a[0]] * a[2]; })[0];
+      return '<tr><td class="first-sticky"><b>' + esc(x.t.name) + '</b>' +
+          '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + x.t.id + (x.t.classYear ? ' · class of ' + x.t.classYear : '') + '</div></td>' +
+        '<td style="font-size:11.5px">' + esc(x.t.clsLabel) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(x.t.practice) + '</td>' +
+        '<td class="r">' + x.tenure + 'y</td>' +
+        '<td class="r" style="color:' + (x.util >= 1.10 ? 'var(--color-red)' : x.util < 0.65 ? 'var(--color-amber)' : '') + '">' + fmtPct(x.util * 100) + '</td>' +
+        '<td><div class="risk-bar"><i style="width:' + (x.score * 100).toFixed(0) + '%;background:' + bandTone(b) + '"></i></div>' +
+          '<div style="font-size:10.5px;color:' + bandTone(b) + ';font-weight:800;margin-top:3px">' + b.toUpperCase() + '</div></td>' +
+        '<td class="r">' + x.score.toFixed(2) + '</td>' +
+        '<td style="font-size:11.5px;color:var(--color-text-muted)">' + esc(drv[1]) + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rows.length) + ' of ' + fmtN(coh.length) + '</b></td>' +
+      '<td></td><td></td><td></td>' +
+      '<td class="r"><b>' + fmtPct(rows.reduce(function (s, x) { return s + x.util; }, 0) / Math.max(1, rows.length) * 100) + '</b></td>' +
+      '<td></td><td class="r"><b>' + (rows.reduce(function (s, x) { return s + x.score; }, 0) / Math.max(1, rows.length)).toFixed(2) + '</b></td>' +
+      '<td></td></tr></tfoot></table></div>';
+
+  var controls =
+    '<select class="flt' + (rtBand !== 'all' ? ' on' : '') + '" onchange="rtSet(\'band\',this.value)">' +
+      ['all', 'High', 'Elevated', 'Moderate', 'Low'].map(function (b) {
+        return '<option value="' + b + '"' + (b === rtBand ? ' selected' : '') + '>' + (b === 'all' ? 'All risk bands' : b + ' risk') + '</option>';
+      }).join('') + '</select> ' +
+    '<select class="flt' + (rtClass !== 'all' ? ' on' : '') + '" onchange="rtSet(\'class\',this.value)">' +
+      '<option value="all">All classes</option>' +
+      M.tkClasses.filter(function (c) { return ['ASC', 'CNS', 'IP'].indexOf(c.id) !== -1; })
+        .map(function (c) { return '<option value="' + c.id + '"' + (c.id === rtClass ? ' selected' : '') + '>' + esc(c.label) + '</option>'; }).join('') +
+    '</select>' +
+    ' <input type="search" class="flt-q" placeholder="Search people…" oninput="rtSet(\'search\',this.value)" value="' + esc(rtSearch) + '" style="min-width:180px">';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    hero('Retention risk — ' + M.asOfLabel,
+      fmtN(high.length) + ' people at <em>high risk</em> of leaving.',
+      'Five signals the firm already has — hours dispersion, after-hours load, evaluation trend, comp position and tenure. ' +
+      'No survey. Replacing the high-risk group would cost roughly ' + fmtK(exposure) + '.',
+      ['adp', 'e3e', 'graph']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    '<div class="row2">' +
+      panel('The signals', srcChip('adp') + ' ' + srcChip('e3e') + ' ' + srcChip('graph'), sigPanel) +
+      panel('What it costs', srcChip('wv'), lever) +
+    '</div>' +
+
+    secHead('The cohort', fmtN(rows.length) + ' shown, highest risk first') +
+    panel('People', controls, tbl) +
+
+    '<div style="margin-top:16px;font-size:12px;color:var(--color-slate-hint);line-height:1.6">' +
+      'A risk score is a prompt for a conversation, not a verdict. Used as anything else it becomes a reason ' +
+      'people stop entering time honestly, which destroys the signal it depends on.' +
+    '</div>';
+}
+
+function topDriver(group) {
+  if (!group.length) return 'hours';
+  var totals = {};
+  SIGNALS.forEach(function (s) {
+    totals[s[0]] = group.reduce(function (a, x) { return a + x.sig[s[0]] * s[2]; }, 0);
+  });
+  return Object.keys(totals).sort(function (a, b) { return totals[b] - totals[a]; })[0];
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

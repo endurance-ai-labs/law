@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Partner Compensation · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260802a">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260802a">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js?v=20260802a"></script>
+<script src="/law/js/data.js?v=20260802a"></script>
+<script src="/law/js/util.js?v=20260802a"></script>
+<script src="/law/js/analytics.js?v=20260802a"></script>
+<script src="/law/js/nav.js?v=20260802a"></script>
+<script>
+renderTopbar();
+
+/* levers — var, before the first render() (TDZ trap) */
+var cmOrig = 35;      /* weight on origination */
+var cmWork = 30;      /* weight on working attribution */
+var cmLock = 20;      /* weight on lockstep / tenure */
+var cmFirm = 15;      /* weight on firm contribution */
+var cmPool = 100;     /* distributable pool as % of net income */
+var cmSaved = null;
+
+function cmSet(k, v) {
+  var n = parseFloat(v);
+  if (k === 'orig') cmOrig = n;
+  if (k === 'work') cmWork = n;
+  if (k === 'lock') cmLock = n;
+  if (k === 'firm') cmFirm = n;
+  if (k === 'pool') cmPool = n;
+  render();
+}
+function cmPreset(name) {
+  var P = {
+    eatwhat:  [70, 20, 5, 5],
+    modified: [35, 30, 20, 15],
+    lockstep: [10, 15, 60, 15],
+    team:     [20, 35, 25, 20],
+  };
+  var p = P[name] || P.modified;
+  cmOrig = p[0]; cmWork = p[1]; cmLock = p[2]; cmFirm = p[3];
+  render();
+}
+function cmSave() {
+  cmSaved = { orig: cmOrig, work: cmWork, lock: cmLock, firm: cmFirm, pool: cmPool };
+  try { localStorage.setItem('wv-comp', JSON.stringify(cmSaved)); } catch (e) {}
+  render();
+}
+
+(function initComp() {
+  try { var s = JSON.parse(localStorage.getItem('wv-comp') || 'null'); if (s) cmSaved = s; } catch (e) {}
+})();
+
+function render() {
+  var M = window.MODEL, F = M.firm;
+  if (!currentPersona()) return;
+  if (!can('margin') || !can('firm')) {
+    document.getElementById('root').innerHTML = hero('Partner compensation', 'Restricted.',
+      'The compensation model is visible to firm-wide roles with margin access.', ['e3e', 'adp']);
+    return;
+  }
+
+  var mine = M.matters;   /* comp is always firm-wide */
+  var R = M.rollup(mine);
+  var pool = M.pnl.netIncome * (cmPool / 100);
+  var wSum = cmOrig + cmWork + cmLock + cmFirm;
+
+  /* build the partner book */
+  var byP = {};
+  M.partners.forEach(function (t) {
+    byP[t.id] = { t: t, orig: 0, work: 0, matters: 0, clients: {}, hours: 0, margin: 0 };
+  });
+  mine.forEach(function (m) {
+    var o = byP[m.partner];
+    if (o) { o.orig += m.collected; o.matters++; o.clients[m.clientId] = 1; o.margin += m.margin; }
+    var s = parseInt(m.id.replace(/\D/g, ''), 10);
+    var pl = M.partners.filter(function (t) { return t.practice === m.practice; });
+    if (pl.length) {
+      var w = byP[pl[s % pl.length].id];
+      if (w) { w.work += m.collected; w.hours += m.partnerHours; }
+    }
+  });
+  var partners = Object.keys(byP).map(function (k) { return byP[k]; });
+
+  var totOrig = partners.reduce(function (s, p) { return s + p.orig; }, 0);
+  var totWork = partners.reduce(function (s, p) { return s + p.work; }, 0);
+  var totLock = partners.reduce(function (s, p) { return s + (2026 - (p.t.classYear || 2010)); }, 0);
+  var totFirm = partners.reduce(function (s, p) { return s + p.hours; }, 0);
+
+  partners.forEach(function (p) {
+    var tenure = 2026 - (p.t.classYear || 2010);
+    p.pts = (totOrig ? p.orig / totOrig : 0) * cmOrig +
+            (totWork ? p.work / totWork : 0) * cmWork +
+            (totLock ? tenure / totLock : 0) * cmLock +
+            (totFirm ? p.hours / totFirm : 0) * cmFirm;
+    p.share = p.pts / (wSum || 1) * (wSum / 100);
+    p.tenure = tenure;
+  });
+  var ptsSum = partners.reduce(function (s, p) { return s + p.pts; }, 0);
+  partners.forEach(function (p) {
+    p.award = ptsSum ? pool * (p.pts / ptsSum) : 0;
+    p.multiple = 0;
+  });
+  var avgAward = pool / partners.length;
+  partners.forEach(function (p) { p.multiple = avgAward ? p.award / avgAward : 0; });
+  partners.sort(function (a, b) { return b.award - a.award; });
+
+  var top = partners[0], bottom = partners[partners.length - 1];
+  var spread = bottom.award ? top.award / bottom.award : 0;
+
+  /* comparison against the saved scenario */
+  var deltaNote = '';
+  if (cmSaved) {
+    var sSum = cmSaved.orig + cmSaved.work + cmSaved.lock + cmSaved.firm;
+    var sPool = M.pnl.netIncome * (cmSaved.pool / 100);
+    partners.forEach(function (p) {
+      var tenure = p.tenure;
+      var pts = (totOrig ? p.orig / totOrig : 0) * cmSaved.orig +
+                (totWork ? p.work / totWork : 0) * cmSaved.work +
+                (totLock ? tenure / totLock : 0) * cmSaved.lock +
+                (totFirm ? p.hours / totFirm : 0) * cmSaved.firm;
+      p.savedPts = pts;
+    });
+    var sPts = partners.reduce(function (s, p) { return s + p.savedPts; }, 0);
+    partners.forEach(function (p) { p.savedAward = sPts ? sPool * (p.savedPts / sPts) : 0; p.delta = p.award - p.savedAward; });
+    var movers = partners.filter(function (p) { return Math.abs(p.delta) > avgAward * 0.08; });
+    deltaNote = '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+      'Against the saved scenario, <b>' + fmtN(movers.length) + '</b> partners move by more than 8% of an average award. ' +
+      'The largest single move is <b>' + fmtK(Math.max.apply(null, partners.map(function (p) { return Math.abs(p.delta); }))) + '</b>. ' +
+      'Seeing who moves before the formula is agreed is the entire point of running it here rather than in the meeting.</div>';
+  }
+
+  var kpis = [
+    kpi('Distributable pool', fmtK(pool), fmtPct(cmPool) + ' of net income', '',
+      'Net income × the pool lever|Net income ' + fmt$(M.pnl.netIncome) + ' ' + tie('/law/financials/', 'P&L')),
+    kpi('Equity partners', fmtN(partners.length), 'sharing the pool', ''),
+    kpi('Average award', fmtK(avgAward), 'pool ÷ partners', ''),
+    kpi('Highest award', fmtK(top.award), esc(top.t.name), 'green'),
+    kpi('Lowest award', fmtK(bottom.award), esc(bottom.t.name), ''),
+    kpi('Spread', spread.toFixed(2) + '×', 'highest ÷ lowest',
+      spread > 6 ? 'amber' : '',
+      'The compression ratio|Eat-what-you-kill firms run wide; lockstep firms run narrow|Neither is right, but the firm should choose deliberately'),
+    kpi('Weight on origination', fmtPct(cmOrig / wSum * 100), 'of the formula', ''),
+    kpi('Scenario', cmSaved ? 'Saved' : 'Unsaved', cmSaved ? 'comparison live below' : 'save to compare', cmSaved ? 'green' : ''),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  var sl = function (label, key, val, note) {
+    return '<div style="margin-bottom:16px">' +
+      '<label style="display:flex;justify-content:space-between;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--color-slate-hint);margin-bottom:7px">' +
+      '<span>' + label + '</span><span style="color:var(--color-blue)">' + val + ' · ' + fmtPct(val / wSum * 100) + '</span></label>' +
+      '<input type="range" min="0" max="80" step="5" value="' + val + '" oninput="cmSet(\'' + key + '\',this.value)" style="width:100%;accent-color:var(--color-blue)">' +
+      (note ? '<div style="font-size:11px;color:var(--color-text-muted);margin-top:5px;line-height:1.5">' + note + '</div>' : '') +
+      '</div>';
+  };
+
+  var levers =
+    '<div style="display:grid;grid-template-columns:340px 1fr;gap:26px;align-items:start" class="row2"><div>' +
+      sl('Origination', 'orig', cmOrig, 'Credit for bringing the client in. The most argued-about line in any partnership.') +
+      sl('Working attribution', 'work', cmWork, 'Credit for doing the work. Rewards service partners who inherit rather than originate.') +
+      sl('Lockstep / tenure', 'lock', cmLock, 'Seniority. Predictable, and the reason lockstep firms retain people through a bad year.') +
+      sl('Firm contribution', 'firm', cmFirm, 'Management, recruiting, training, pro bono — everything that is not billable.') +
+      '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--color-border)">' +
+        '<label style="display:flex;justify-content:space-between;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--color-slate-hint);margin-bottom:7px">' +
+        '<span>Pool as % of net income</span><span style="color:var(--color-blue)">' + fmtPct(cmPool) + '</span></label>' +
+        '<input type="range" min="60" max="100" step="5" value="' + cmPool + '" oninput="cmSet(\'pool\',this.value)" style="width:100%;accent-color:var(--color-blue)">' +
+        '<div style="font-size:11px;color:var(--color-text-muted);margin-top:5px">The remainder is retained for capital, technology and the unexpected.</div>' +
+      '</div>' +
+      '<div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:6px">' +
+        '<span style="font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--color-slate-hint);width:100%;margin-bottom:2px">Common models</span>' +
+        [['eatwhat', 'Eat what you kill'], ['modified', 'Modified lockstep'], ['lockstep', 'Pure lockstep'], ['team', 'Team-based']]
+          .map(function (p) { return '<button class="fchip link" onclick="cmPreset(\'' + p[0] + '\')">' + p[1] + '</button>'; }).join('') +
+        '<button class="fchip" onclick="cmSave()" style="margin-top:6px">Save this scenario</button>' +
+      '</div>' +
+    '</div><div id="cm-out"></div></div>';
+
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:600px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Partner</th><th>Practice</th><th class="r">Originated</th><th class="r">Worked</th>' +
+    '<th class="r">Tenure</th><th class="r">Points</th><th class="r">Award</th><th class="r">× average</th>' +
+    (cmSaved ? '<th class="r">vs saved</th>' : '') + '</tr></thead><tbody>' +
+    partners.slice(0, 60).map(function (p) {
+      return '<tr><td class="first-sticky"><b>' + esc(p.t.name) + '</b>' +
+          '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + fmtN(Object.keys(p.clients).length) + ' clients · ' + fmtN(p.matters) + ' matters</div></td>' +
+        '<td style="font-size:11.5px">' + esc(p.t.practice) + '</td>' +
+        '<td class="r">' + fmtK(p.orig) + '</td>' +
+        '<td class="r" style="color:var(--color-text-muted)">' + fmtK(p.work) + '</td>' +
+        '<td class="r">' + p.tenure + 'y</td>' +
+        '<td class="r">' + p.pts.toFixed(2) + '</td>' +
+        '<td class="r"><b>' + fmtK(p.award) + '</b></td>' +
+        '<td class="r" style="color:' + (p.multiple > 1.5 ? 'var(--color-green)' : p.multiple < 0.6 ? 'var(--color-amber)' : '') + '">' + p.multiple.toFixed(2) + '×</td>' +
+        (cmSaved ? '<td class="r" style="color:' + (p.delta >= 0 ? 'var(--color-green)' : 'var(--color-red)') + '">' +
+          (p.delta >= 0 ? '+' : '') + fmtK(p.delta) + '</td>' : '') +
+        '</tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(partners.length) + ' partners</b></td><td></td>' +
+      '<td class="r"><b>' + fmtK(totOrig) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(totWork) + '</b></td><td></td>' +
+      '<td class="r"><b>' + ptsSum.toFixed(1) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(pool) + '</b></td><td class="r"><b>1.00×</b></td>' +
+      (cmSaved ? '<td></td>' : '') + '</tr></tfoot></table></div>' +
+    '<div style="margin-top:12px"><span class="tie">Origination ties to firm revenue — ' + fmt$2(R.collected) + '</span></div>' +
+    deltaNote;
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    hero('Partner compensation — ' + M.asOfLabel,
+      fmtK(pool) + ' across <em>' + fmtN(partners.length) + ' partners</em>.',
+      'Move the weights and watch who moves. Every partner is scored the same way from the same data, ' +
+      'so the argument becomes about the formula rather than about whose numbers are right.',
+      ['e3e', 'adp', 'crm', 'wv']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    secHead('The formula', 'four weights, one pool') +
+    panel('Model it', srcChip('wv'), levers, ' style="margin-bottom:18px"') +
+
+    secHead('The distribution', fmtN(partners.length) + ' partners') +
+    panel('Awards', srcChip('e3e') + ' ' + srcChip('adp') + ' · ' + tie('/law/origination/', 'Origination ledger'), tbl);
+
+  renderCm(partners, pool, avgAward, spread);
+}
+
+function renderCm(partners, pool, avgAward, spread) {
+  var el = document.getElementById('cm-out');
+  if (!el) return;
+  var bands = [['Over 2× average', 2, 99], ['1.5–2×', 1.5, 2], ['0.8–1.5×', 0.8, 1.5], ['0.5–0.8×', 0.5, 0.8], ['Under 0.5×', 0, 0.5]];
+  el.innerHTML =
+    '<div style="background:var(--color-bg-3);border:1px solid var(--color-border);border-left:3px solid var(--color-blue);border-radius:var(--radius-md);padding:20px 22px;margin-bottom:16px">' +
+      '<div style="font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--color-slate-hint)">Compression</div>' +
+      '<div style="font-size:32px;font-weight:800;letter-spacing:-.02em;margin:5px 0 2px">' + spread.toFixed(2) + '×</div>' +
+      '<div style="font-size:12.5px;color:var(--color-text-muted);line-height:1.6">Highest award ÷ lowest. ' +
+        (spread > 6 ? 'Wide — this formula rewards origination heavily and will feel punitive to service partners.'
+         : spread < 2.5 ? 'Narrow — predictable and good for retention, but rainmakers will notice.'
+         : 'Moderate — the range most modified-lockstep firms land in.') +
+      '</div></div>' +
+    '<table class="demo-tbl"><thead><tr><th>Band</th><th class="r">Partners</th><th class="r">Share of pool</th></tr></thead><tbody>' +
+    bands.map(function (b) {
+      var inB = partners.filter(function (p) { return p.multiple >= b[1] && p.multiple < b[2]; });
+      var amt = inB.reduce(function (s, p) { return s + p.award; }, 0);
+      return '<tr><td><b>' + b[0] + '</b></td><td class="r">' + fmtN(inB.length) + '</td>' +
+        '<td class="r">' + fmtPct(amt / pool * 100) + '</td></tr>';
+    }).join('') + '</tbody></table>';
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>
