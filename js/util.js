@@ -29,6 +29,15 @@ const fmtDate = (iso) => { if (!iso) return '—'; const [y, m, d] = iso.split('
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const qs  = (k) => new URLSearchParams(window.location.search).get(k);
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+const todayISO = () => MODEL_AS_OF;
+/* noon avoids the DST edge that shifts a midnight date back a day */
+const addDays = (iso, d) => {
+  const t = new Date(iso + 'T12:00:00');
+  t.setDate(t.getDate() + d);
+  return t.toISOString().slice(0, 10);
+};
+const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
+const MODEL_AS_OF = '2026-07-31';
 
 /* ============================================================
    Roles — the real Whitmore Vance org.

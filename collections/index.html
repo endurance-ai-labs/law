@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Collections · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801d">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js?v=20260802a"></script>
+<script src="/law/js/data.js?v=20260802a"></script>
+<script src="/law/js/util.js?v=20260802a"></script>
+<script src="/law/js/analytics.js?v=20260802a"></script>
+<script src="/law/js/nav.js?v=20260802a"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() (TDZ trap) */
+var coStage = 'all';
+var coSearch = '';
+function coSet(k, v) { if (k === 'stage') coStage = v; if (k === 'search') coSearch = (v || '').toLowerCase(); render(); }
+
+var LADDER = [
+  ['Statement', 'Day 0', 'Automatic — statement issued with the invoice'],
+  ['First reminder', 'Day 35', 'Automatic email to the client billing contact'],
+  ['Billing partner notified', 'Day 60', 'Partner asked to make contact; task raised'],
+  ['Formal demand', 'Day 90', 'Letter from the billing partner, copied to finance'],
+  ['Committee review', 'Day 120', 'Write-off, payment plan or escalation decided'],
+];
+
+function QUEUE() {
+  var M = window.MODEL;
+  var mine = scopeMatters(M.matters);
+  return mine.filter(function (m) { return m.active && m.arTotal > 5000; })
+    .map(function (m) {
+      var s = parseInt(m.id.replace(/\D/g, ''), 10);
+      var old = m.ar.a90 + m.ar.a120;
+      var age = m.ar.a120 > 0 ? 120 + (s % 90) : m.ar.a90 > 0 ? 91 + (s % 29) : m.ar.a60 > 0 ? 61 + (s % 29) : m.ar.a30 > 0 ? 31 + (s % 29) : (s % 30);
+      var stage = age >= 120 ? 4 : age >= 90 ? 3 : age >= 60 ? 2 : age >= 35 ? 1 : 0;
+      var promise = (s % 7 === 0 && age > 60) ? addDays('2026-07-31', (s % 21) + 3) : null;
+      var disputed = s % 13 === 0 && age > 90;
+      return { m: m, age: age, old: old, stage: stage, promise: promise, disputed: disputed,
+               collector: ['Rosa Ferreira', 'Camille Brossard', 'Priya Raghunathan'][s % 3] };
+    })
+    .sort(function (a, b) { return b.old - a.old || b.age - a.age; });
+}
+
+function render() {
+  var M = window.MODEL, F = M.firm;
+  if (!currentPersona()) return;
+  if (!can('fin')) {
+    document.getElementById('root').innerHTML = hero('Collections', 'Restricted.', 'Collections requires financial access.', ['e3e']);
+    return;
+  }
+
+  var q = QUEUE();
+  var rows = q.filter(function (x) {
+    if (coStage !== 'all' && String(x.stage) !== coStage) return false;
+    if (coSearch && (x.m.clientName + ' ' + x.m.name + ' ' + x.m.partnerName).toLowerCase().indexOf(coSearch) === -1) return false;
+    return true;
+  });
+
+  var mine = scopeMatters(M.matters);
+  var R = M.rollup(mine);
+  var over90 = R.a90 + R.a120;
+  var promises = q.filter(function (x) { return x.promise; });
+  var disputed = q.filter(function (x) { return x.disputed; });
+  var perDay = R.collected / 365;
+
+  var kpis = [
+    kpi('Receivables', fmtK(R.arTotal), fmtN(R.arTotal / perDay, 0) + ' days of revenue',
+      '', 'Invoiced and not yet collected|' + fmt$2(R.arTotal)),
+    kpi('Over 90 days', fmtK(over90), fmtPct(over90 / R.arTotal * 100) + ' of the book',
+      over90 / R.arTotal > 0.12 ? 'amber' : '',
+      'Collection probability falls sharply past ninety days|Every week beyond it costs recovery'),
+    kpi('In the work queue', fmtN(q.length), 'matters needing a call', ''),
+    kpi('Promises to pay', fmtN(promises.length), fmtK(promises.reduce(function (s, x) { return s + x.old; }, 0)) + ' committed', 'green'),
+    kpi('Disputed', fmtN(disputed.length), fmtK(disputed.reduce(function (s, x) { return s + x.old; }, 0)) + ' contested', disputed.length ? 'amber' : 'green',
+      'A dispute is a billing problem, not a collections problem|These route back to the billing partner rather than the collector'),
+    kpi('At committee stage', fmtN(q.filter(function (x) { return x.stage === 4; }).length),
+      'write-off or payment plan', 'amber'),
+    kpi('One day of AR', fmtK(perDay), 'released per day removed', '',
+      'Revenue ÷ 365|The unit every collections conversation should use'),
+    kpi('Escalation', 'Automatic', 'five stages, no chasing', 'green',
+      'The ladder runs itself|A partner is only pulled in when the automated stages have not worked'),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* the ladder */
+  var ladder = '<div class="triage">' + LADDER.map(function (l, i) {
+    var inStage = q.filter(function (x) { return x.stage === i; });
+    var amt = inStage.reduce(function (s, x) { return s + x.m.arTotal; }, 0);
+    return '<div class="tri ' + (i >= 3 ? 'red' : i >= 2 ? '' : 'green') + '"><span class="sev"></span>' +
+      '<div><div class="t">' + esc(l[0]) + ' <span style="font-size:10.5px;color:var(--color-slate-hint);font-weight:600">' + esc(l[1]) + '</span></div>' +
+      '<div class="d">' + esc(l[2]) + '</div></div>' +
+      '<div class="a">' + fmtN(inStage.length) + ' · ' + fmtK(amt) + '</div></div>';
+  }).join('') + '</div>';
+
+  /* work queue */
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:600px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Client</th><th>Matter</th><th>Billing partner</th>' +
+    '<th class="r">Total AR</th><th class="r">Over 90</th><th class="r">Age</th><th>Stage</th>' +
+    '<th>Collector</th><th>Flag</th><th>Action</th></tr></thead><tbody>' +
+    rows.slice(0, 60).map(function (x) {
+      var m = x.m;
+      return '<tr><td class="first-sticky"><b>' + esc(m.clientName) + '</b></td>' +
+        '<td style="font-size:11.5px"><a href="/law/matter/?id=' + encodeURIComponent(m.id) + '" style="color:var(--color-blue);text-decoration:none">' +
+          esc(m.name.slice(0, 30)) + '</a></td>' +
+        '<td style="font-size:11.5px">' + esc(m.partnerName) + '</td>' +
+        '<td class="r"><b>' + fmtK(m.arTotal) + '</b></td>' +
+        '<td class="r" style="color:' + (x.old > 0 ? 'var(--wv-burgundy)' : 'var(--color-slate-hint)') + '">' +
+          (x.old > 0 ? fmtK(x.old) : '—') + '</td>' +
+        '<td class="r" style="color:' + (x.age >= 90 ? 'var(--color-red)' : x.age >= 60 ? 'var(--color-amber)' : '') + '">' + x.age + 'd</td>' +
+        '<td style="font-size:11px">' + esc(LADDER[x.stage][0]) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(x.collector) + '</td>' +
+        '<td>' + (x.disputed ? pill('DISPUTED', 'red')
+          : x.promise ? pill('PROMISED ' + fmtDate(x.promise).slice(0, 5), 'green')
+          : x.age >= 90 ? pill('AGED', 'amber') : '<span style="color:var(--color-slate-hint);font-size:11px">—</span>') + '</td>' +
+        '<td><button class="fchip link" onclick="coNudge(\'' + m.id + '\',\'' + esc(m.partnerName) + '\')">Escalate</button></td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rows.length) + ' of ' + fmtN(q.length) + '</b></td>' +
+      '<td></td><td></td>' +
+      '<td class="r"><b>' + fmtK(rows.reduce(function (s, x) { return s + x.m.arTotal; }, 0)) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(rows.reduce(function (s, x) { return s + x.old; }, 0)) + '</b></td>' +
+      '<td></td><td></td><td></td><td></td><td></td></tr></tfoot></table></div>';
+
+  /* collector performance */
+  var collectors = ['Rosa Ferreira', 'Camille Brossard', 'Priya Raghunathan'];
+  var perf = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Collector</th><th class="r">Matters</th><th class="r">AR held</th>' +
+    '<th class="r">Over 90</th><th class="r">Promises secured</th><th class="r">Avg age</th></tr></thead><tbody>' +
+    collectors.map(function (c) {
+      var inC = q.filter(function (x) { return x.collector === c; });
+      var ar = inC.reduce(function (s, x) { return s + x.m.arTotal; }, 0);
+      var old = inC.reduce(function (s, x) { return s + x.old; }, 0);
+      var pr = inC.filter(function (x) { return x.promise; }).length;
+      var avg = inC.length ? inC.reduce(function (s, x) { return s + x.age; }, 0) / inC.length : 0;
+      return '<tr><td class="first-sticky"><b>' + esc(c) + '</b></td>' +
+        '<td class="r">' + fmtN(inC.length) + '</td>' +
+        '<td class="r">' + fmtK(ar) + '</td>' +
+        '<td class="r" style="color:var(--wv-burgundy)">' + fmtK(old) + '</td>' +
+        '<td class="r" style="color:var(--color-green)">' + fmtN(pr) + '</td>' +
+        '<td class="r">' + fmtN(avg, 0) + 'd</td></tr>';
+    }).join('') + '</tbody></table></div>';
+
+  var controls =
+    '<select class="flt' + (coStage !== 'all' ? ' on' : '') + '" onchange="coSet(\'stage\',this.value)">' +
+      '<option value="all">All stages</option>' +
+      LADDER.map(function (l, i) { return '<option value="' + i + '"' + (String(i) === coStage ? ' selected' : '') + '>' + esc(l[0]) + '</option>'; }).join('') +
+    '</select>' +
+    ' <input type="search" class="flt-q" placeholder="Search clients, matters, partners…" oninput="coSet(\'search\',this.value)" value="' + esc(coSearch) + '" style="min-width:220px">';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('Collections — ' + M.asOfLabel,
+      fmtK(over90) + ' is <em>older than ninety days</em>.',
+      'Every day of receivable is worth ' + fmtK(perDay) + '. The escalation ladder runs itself, so a partner is only ' +
+      'pulled in when the automated stages have already failed. ' + tie('/law/lockup/', 'Lockup'),
+      ['e3e', 'ebill', 'wv']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    secHead('The escalation ladder', 'automatic through day 90') +
+    panel('Where everything sits', srcChip('wv'), ladder, ' style="margin-bottom:18px"') +
+
+    secHead('Work queue', fmtN(rows.length) + ' of ' + fmtN(q.length) + ' shown') +
+    panel('Who to call', controls, tbl, ' style="margin-bottom:18px"') +
+
+    secHead('Collector performance', collectors.length + ' people') +
+    panel('By collector', srcChip('e3e'), perf);
+}
+
+function coNudge(id, partner) {
+  window.__apprDefs['coll-' + id] = [{ role: 'pgl', label: 'Contact the client on ' + id + ' — receivable aged past 90 days' }];
+  slackNudge('coll-' + id, 0);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

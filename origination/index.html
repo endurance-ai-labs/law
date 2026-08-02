@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Origination &amp; Cross-Sell · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801d">
+<style>
+.xs td.c { text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; }
+.xs td.c.has { background: rgba(43,74,139,.16); color: var(--color-blue); }
+.xs td.c.gap { color: var(--color-slate-hint); }
+.xs td.c.gap:hover { background: var(--color-violet-pale); color: var(--wv-burgundy); cursor: help; }
+</style>
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/js/data.js?v=20260802a"></script>
+<script src="/law/js/util.js?v=20260802a"></script>
+<script src="/law/js/analytics.js?v=20260802a"></script>
+<script src="/law/js/nav.js?v=20260802a"></script>
+<script>
+renderTopbar();
+
+/* state — var, before the first render() (TDZ trap) */
+var orView = 'clients';
+var orSearch = '';
+function orSet(k, v) { if (k === 'view') orView = v; if (k === 'search') orSearch = (v || '').toLowerCase(); render(); }
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+  if (!can('fin')) {
+    document.getElementById('root').innerHTML = hero('Origination & cross-sell', 'Restricted.',
+      'Origination credits require financial access.', ['e3e', 'crm']);
+    return;
+  }
+
+  var mine = scopeMatters(M.matters);
+  var R = M.rollup(mine);
+  var practices = M.practices.map(function (p) { return p.name; });
+
+  /* client × practice matrix */
+  var byClient = {};
+  mine.forEach(function (m) {
+    var c = byClient[m.clientId] = byClient[m.clientId] || { id: m.clientId, name: m.clientName, total: 0, prac: {} };
+    c.total += m.collected;
+    c.prac[m.practice] = (c.prac[m.practice] || 0) + m.collected;
+  });
+  var clients = Object.keys(byClient).map(function (k) { return byClient[k]; })
+    .sort(function (a, b) { return b.total - a.total; });
+
+  var top = clients.slice(0, 30).filter(function (c) {
+    return !orSearch || c.name.toLowerCase().indexOf(orSearch) !== -1;
+  });
+
+  /* the white space, quantified: average revenue per practice for clients that DO use it */
+  var avgByPrac = {};
+  practices.forEach(function (p) {
+    var users = clients.filter(function (c) { return c.prac[p]; });
+    avgByPrac[p] = users.length ? users.reduce(function (s, c) { return s + c.prac[p]; }, 0) / users.length : 0;
+  });
+
+  var single = clients.filter(function (c) { return Object.keys(c.prac).length === 1; });
+  var avgDepth = clients.reduce(function (s, c) { return s + Object.keys(c.prac).length; }, 0) / clients.length;
+  /* opportunity: top-50 clients × practices they do not use × that practice's average, discounted hard */
+  var opportunity = clients.slice(0, 50).reduce(function (s, c) {
+    return s + practices.filter(function (p) { return !c.prac[p]; })
+      .reduce(function (a, p) { return a + avgByPrac[p] * 0.15; }, 0);
+  }, 0);
+
+  /* origination ledger */
+  var byPartner = {};
+  mine.forEach(function (m) {
+    var o = byPartner[m.partner] = byPartner[m.partner] || { id: m.partner, name: m.partnerName, orig: 0, work: 0, matters: 0, clients: {} };
+    o.orig += m.collected;
+    o.matters++;
+    o.clients[m.clientId] = 1;
+  });
+  /* working attribution: hours-weighted, so it differs from origination — the point of the page */
+  mine.forEach(function (m) {
+    var s = parseInt(m.id.replace(/\D/g, ''), 10);
+    var pool = M.partners.filter(function (t) { return t.practice === m.practice; });
+    if (!pool.length) return;
+    var worker = pool[s % pool.length];
+    var o = byPartner[worker.id] = byPartner[worker.id] || { id: worker.id, name: worker.name, orig: 0, work: 0, matters: 0, clients: {} };
+    o.work += m.collected;
+  });
+  var partners = Object.keys(byPartner).map(function (k) { return byPartner[k]; })
+    .sort(function (a, b) { return b.orig - a.orig; });
+
+  var kpis = [
+    kpi('Clients', fmtN(clients.length), 'with revenue this year', ''),
+    kpi('Average practice depth', fmtN(avgDepth, 2), 'practice groups per client', ''),
+    kpi('Single-practice clients', fmtN(single.length), fmtPct(single.length / clients.length * 100) + ' of the book', 'amber',
+      'Clients using exactly one practice group|The most concentrated form of relationship risk, and the clearest cross-sell target'),
+    kpi('White space — top 50', fmtK(opportunity), 'discounted opportunity', 'green',
+      'For each of the top 50 clients, the practices they do not use × that practice\'s average client revenue × 15%|Deliberately discounted: a gap is not a sale'),
+    kpi('Largest originator', esc(partners[0].name.split(' ')[1] || partners[0].name), fmtK(partners[0].orig), ''),
+    kpi('Top-10 originators', fmtPct(partners.slice(0, 10).reduce(function (s, p) { return s + p.orig; }, 0) / R.collected * 100),
+      'of firm revenue originated', partners.slice(0, 10).reduce(function (s, p) { return s + p.orig; }, 0) / R.collected > 0.5 ? 'amber' : ''),
+    kpi('Deepest relationship', fmtN(Math.max.apply(null, clients.map(function (c) { return Object.keys(c.prac).length; }))),
+      'practice groups, one client', 'green'),
+    kpi('Clients in 4+ practices', fmtN(clients.filter(function (c) { return Object.keys(c.prac).length >= 4; }).length),
+      'the stickiest relationships', 'green',
+      'A client using four or more practice groups is materially harder to lose|Depth is the best retention metric a firm has'),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  var body = '';
+
+  if (orView === 'clients') {
+    body = '<div class="demo-tbl-wrap grid-scroll" style="max-height:620px"><table class="demo-tbl xs">' +
+      '<thead><tr><th class="first-sticky">Client</th><th class="r">Revenue</th><th class="r">Depth</th>' +
+      practices.map(function (p) { return '<th class="c" style="font-size:9px">' + esc(p.split(/[\/ &]/)[0]) + '</th>'; }).join('') +
+      '<th class="r">White space</th></tr></thead><tbody>' +
+      top.map(function (c) {
+        var depth = Object.keys(c.prac).length;
+        var gaps = practices.filter(function (p) { return !c.prac[p]; });
+        var opp = gaps.reduce(function (a, p) { return a + avgByPrac[p] * 0.15; }, 0);
+        return '<tr><td class="first-sticky"><b>' + esc(c.name) + '</b></td>' +
+          '<td class="r">' + fmtK(c.total) + '</td>' +
+          '<td class="r"><b>' + depth + '</b></td>' +
+          practices.map(function (p) {
+            return c.prac[p]
+              ? '<td class="c has" title="' + esc(p) + ' — ' + fmt$(c.prac[p]) + '">' + fmtK(c.prac[p]).replace('$', '') + '</td>'
+              : '<td class="c gap" data-exp="White space|' + esc(p) + '|This client does not use this group|Average client in this group is worth ' +
+                fmt$(avgByPrac[p]) + '">·</td>';
+          }).join('') +
+          '<td class="r" style="color:var(--color-green)">' + fmtK(opp) + '</td></tr>';
+      }).join('') +
+      '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>Top ' + top.length + ' clients</b></td>' +
+        '<td class="r"><b>' + fmtK(top.reduce(function (s, c) { return s + c.total; }, 0)) + '</b></td>' +
+        '<td class="r"><b>' + fmtN(top.reduce(function (s, c) { return s + Object.keys(c.prac).length; }, 0) / top.length, 2) + '</b></td>' +
+        practices.map(function (p) {
+          return '<td class="c">' + top.filter(function (c) { return c.prac[p]; }).length + '</td>';
+        }).join('') +
+        '<td class="r"><b>' + fmtK(top.reduce(function (s, c) {
+          return s + practices.filter(function (p) { return !c.prac[p]; }).reduce(function (a, p) { return a + avgByPrac[p] * 0.15; }, 0);
+        }, 0)) + '</b></td></tr></tfoot></table></div>' +
+      '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+        'Every dot is a practice group this client has never used. Hover one to see what the average client in that group is worth. ' +
+        '<b>' + fmtN(single.length) + '</b> clients use exactly one group — the firm\'s largest concentration of both risk and opportunity, ' +
+        'and a list no individual partner can see because each of them only holds part of it.' +
+      '</div>';
+  } else {
+    body = '<div class="demo-tbl-wrap grid-scroll" style="max-height:620px"><table class="demo-tbl">' +
+      '<thead><tr><th class="first-sticky">Partner</th><th class="r">Originated</th><th class="r">Share</th>' +
+      '<th class="r">Worked</th><th class="r">Orig ÷ worked</th><th class="r">Clients</th><th class="r">Matters</th><th>Reading</th></tr></thead><tbody>' +
+      partners.slice(0, 40).map(function (p) {
+        var ratio = p.work ? p.orig / p.work : 0;
+        var read = ratio > 1.6 ? ['Rainmaker — originates far more than they work', 'green']
+          : ratio < 0.6 ? ['Service partner — works far more than they originate', '']
+          : ['Balanced', ''];
+        return '<tr><td class="first-sticky"><b>' + esc(p.name) + '</b></td>' +
+          '<td class="r"><b>' + fmtK(p.orig) + '</b></td>' +
+          '<td class="r">' + fmtPct(p.orig / R.collected * 100) + '</td>' +
+          '<td class="r" style="color:var(--color-text-muted)">' + fmtK(p.work) + '</td>' +
+          '<td class="r">' + (p.work ? ratio.toFixed(2) : '—') + '</td>' +
+          '<td class="r">' + fmtN(Object.keys(p.clients).length) + '</td>' +
+          '<td class="r">' + fmtN(p.matters) + '</td>' +
+          '<td style="font-size:11.5px;color:' + (read[1] ? 'var(--color-green)' : 'var(--color-text-muted)') + '">' + read[0] + '</td></tr>';
+      }).join('') +
+      '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(partners.length) + ' partners</b></td>' +
+        '<td class="r"><b>' + fmtK(R.collected) + '</b></td><td class="r">100.0%</td>' +
+        '<td class="r"><b>' + fmtK(partners.reduce(function (s, p) { return s + p.work; }, 0)) + '</b></td>' +
+        '<td></td><td></td>' +
+        '<td class="r"><b>' + fmtN(partners.reduce(function (s, p) { return s + p.matters; }, 0)) + '</b></td><td></td></tr></tfoot></table></div>' +
+      '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+        'Origination and working attribution are different numbers, and compensation arguments live in the gap between them. ' +
+        'Showing both, computed the same way for everyone, is what turns that argument into a conversation about the split rather than about the data. ' +
+        tie('/law/comp/', 'Compensation') +
+      '</div>';
+  }
+
+  var toggle = [['clients', 'Cross-sell matrix'], ['partners', 'Origination ledger']].map(function (t) {
+    return '<button class="fchip' + (orView === t[0] ? '' : ' link') + '" onclick="orSet(\'view\',\'' + t[0] + '\')">' + t[1] + '</button>';
+  }).join(' ') +
+  (orView === 'clients' ? ' <input type="search" class="flt-q" placeholder="Search clients…" oninput="orSet(\'search\',this.value)" value="' + esc(orSearch) + '" style="min-width:180px;margin-left:6px">' : '');
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('Origination &amp; cross-sell — ' + M.asOfLabel,
+      fmtN(single.length) + ' clients use <em>exactly one</em> practice group.',
+      'The average client uses ' + fmtN(avgDepth, 2) + ' of seven groups. Depth is the best retention metric a firm has, ' +
+      'and the white space is worth roughly ' + fmtK(opportunity) + ' on the top fifty clients alone.',
+      ['e3e', 'crm', 'graph']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    secHead(orView === 'clients' ? 'Where the white space is' : 'Who brings the work in',
+      orView === 'clients' ? 'client × practice group' : 'origination vs working attribution') +
+    panel(orView === 'clients' ? 'Cross-sell matrix' : 'Origination ledger',
+      toggle, body);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

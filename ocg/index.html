@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Outside Counsel Guidelines · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801d">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/js/data.js?v=20260802a"></script>
+<script src="/law/js/util.js?v=20260802a"></script>
+<script src="/law/js/analytics.js?v=20260802a"></script>
+<script src="/law/js/nav.js?v=20260802a"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() (TDZ trap) */
+var ogCat = 'all';
+var ogSearch = '';
+function ogSet(k, v) { if (k === 'cat') ogCat = v; if (k === 'search') ogSearch = (v || '').toLowerCase(); render(); }
+
+/* the rule taxonomy a firm actually has to enforce */
+var RULE_TYPES = [
+  { code: 'STAFF_APPROVE', cat: 'Staffing', rule: 'Only timekeepers on the approved schedule may bill',
+    enforce: 'Pre-bill check against the client timekeeper list', auto: true },
+  { code: 'STAFF_NO_PARA', cat: 'Staffing', rule: 'Paralegal time not billable',
+    enforce: 'Pre-bill check on timekeeper class', auto: true },
+  { code: 'STAFF_MAX_ATT', cat: 'Staffing', rule: 'No more than two attorneys billing the same event',
+    enforce: 'Duplicate-attendance detection across time entries', auto: true },
+  { code: 'RATE_FREEZE', cat: 'Rates', rule: 'Rates frozen for the engagement term',
+    enforce: 'Rate compared to the approved schedule on every line', auto: true },
+  { code: 'RATE_CAP', cat: 'Rates', rule: 'Partner rate capped at the agreed ceiling',
+    enforce: 'Ceiling check per timekeeper class', auto: true },
+  { code: 'NARR_NO_BLOCK', cat: 'Narrative', rule: 'No block billing — one task per entry',
+    enforce: 'Narrative parsed for multiple tasks and semicolon patterns', auto: true },
+  { code: 'NARR_MIN', cat: 'Narrative', rule: 'Narrative must describe the task specifically',
+    enforce: 'Minimum specificity check; generic phrases flagged', auto: true },
+  { code: 'CODE_UTBMS', cat: 'Coding', rule: 'Every line must carry a UTBMS phase and task code',
+    enforce: 'Presence and validity check', auto: true },
+  { code: 'TIME_INCREMENT', cat: 'Coding', rule: 'Time in tenth-of-an-hour increments',
+    enforce: 'Increment validation', auto: true },
+  { code: 'ADMIN_NB', cat: 'Non-billable', rule: 'Administrative and clerical time not billable',
+    enforce: 'Task-code and narrative classification', auto: true },
+  { code: 'TRAIN_NB', cat: 'Non-billable', rule: 'Training and orientation of firm staff not billable',
+    enforce: 'Task-code classification', auto: true },
+  { code: 'TRAVEL_50', cat: 'Travel', rule: 'Travel billed at 50% unless working',
+    enforce: 'Travel task code rate check', auto: true },
+  { code: 'TRAVEL_APPROVE', cat: 'Travel', rule: 'Travel requires advance written approval',
+    enforce: 'Approval record required before the line clears', auto: false },
+  { code: 'EXP_THRESH', cat: 'Expenses', rule: 'Disbursements over the threshold need pre-approval',
+    enforce: 'Threshold check against the expense feed', auto: true },
+  { code: 'EXP_NO_MARKUP', cat: 'Expenses', rule: 'No markup on disbursements',
+    enforce: 'Cost compared to vendor invoice', auto: true },
+  { code: 'BUDGET_REQ', cat: 'Budget', rule: 'Matter budget required before work begins',
+    enforce: 'Budget presence check at matter open', auto: true },
+  { code: 'BUDGET_VAR', cat: 'Budget', rule: 'Notify the client before exceeding budget',
+    enforce: 'Burn monitored against budget continuously', auto: true },
+  { code: 'INV_TIMING', cat: 'Billing', rule: 'Invoices submitted within 45 days of period end',
+    enforce: 'Age of unbilled WIP monitored', auto: true },
+  { code: 'INV_FORMAT', cat: 'Billing', rule: 'LEDES 1998B format required',
+    enforce: 'Format validation on export', auto: true },
+  { code: 'CONF_NOTIFY', cat: 'Risk', rule: 'Notify the client of any adverse representation',
+    enforce: 'Conflicts feed cross-checked against the client family', auto: false },
+];
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+  if (!can('fin') && !can('risk')) {
+    document.getElementById('root').innerHTML = hero('Outside counsel guidelines', 'Restricted.',
+      'Guideline compliance is visible to finance and risk roles.', ['intapp']);
+    return;
+  }
+
+  var clients = M.ebillClients;
+  var totalRules = clients.reduce(function (s, c) { return s + c.ocgCount; }, 0);
+  var autoRules = RULE_TYPES.filter(function (r) { return r.auto; }).length;
+  var cats = [...new Set(RULE_TYPES.map(function (r) { return r.cat; }))];
+
+  /* map rule types to the rejection reasons they prevent */
+  var reasonFor = {
+    NARR_NO_BLOCK: 'BLOCK_BILLING', NARR_MIN: 'BLOCK_BILLING',
+    STAFF_APPROVE: 'STAFFING', STAFF_NO_PARA: 'STAFFING', STAFF_MAX_ATT: 'DUPLICATE',
+    RATE_FREEZE: 'RATE', RATE_CAP: 'RATE',
+    CODE_UTBMS: 'TASK_CODE', TIME_INCREMENT: 'TASK_CODE',
+    ADMIN_NB: 'ADMIN', TRAIN_NB: 'ADMIN',
+    TRAVEL_50: 'TRAVEL', TRAVEL_APPROVE: 'TRAVEL',
+  };
+  var reasonAmt = {};
+  M.ebill.reasons.forEach(function (r) {
+    reasonAmt[r.code] = M.ebillClients.reduce(function (s, c) {
+      var x = c.mix.filter(function (m) { return m.code === r.code; })[0];
+      return s + (x ? x.amount : 0);
+    }, 0);
+  });
+
+  var rules = RULE_TYPES.filter(function (r) {
+    if (ogCat !== 'all' && r.cat !== ogCat) return false;
+    if (ogSearch && (r.rule + ' ' + r.cat + ' ' + r.enforce).toLowerCase().indexOf(ogSearch) === -1) return false;
+    return true;
+  });
+
+  var preventable = Object.keys(reasonFor).reduce(function (s, k) {
+    return s + (reasonAmt[reasonFor[k]] || 0) / Object.keys(reasonFor).filter(function (x) { return reasonFor[x] === reasonFor[k]; }).length;
+  }, 0);
+
+  var kpis = [
+    kpi('Clients with guidelines', fmtN(clients.length), 'each with its own rule set', ''),
+    kpi('Rules parsed', fmtN(totalRules), 'across every client', '',
+      'Guidelines arrive as PDFs and Word documents|Each is parsed into rules the billing engine can actually apply'),
+    kpi('Rule types', fmtN(RULE_TYPES.length), 'in ' + cats.length + ' categories', ''),
+    kpi('Automatically enforced', fmtN(autoRules) + ' of ' + fmtN(RULE_TYPES.length),
+      fmtPct(autoRules / RULE_TYPES.length * 100) + ' checked pre-bill', 'green',
+      'Rules the engine can check before a bill is submitted|The remainder need a human decision and are surfaced as tasks'),
+    kpi('Rejections these prevent', fmtK(preventable), 'a year, at current volumes', 'green',
+      'The share of client rejections attributable to rules that are checkable before submission'),
+    kpi('Value under guideline control', fmtK(M.ebill.submitted), fmtPct(M.ebill.share * 100) + ' of billings', ''),
+    kpi('Most restrictive client', esc(clients.slice().sort(function (a, b) { return b.ocgCount - a.ocgCount; })[0].client.slice(0, 20)),
+      fmtN(clients.slice().sort(function (a, b) { return b.ocgCount - a.ocgCount; })[0].ocgCount) + ' rules', ''),
+    kpi('Where they are enforced', 'Pre-bill', 'not after rejection', 'green',
+      'Rules are applied before submission rather than discovered three weeks later in a portal reason code'),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* rule catalogue */
+  var ruleTbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:560px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Rule</th><th>Category</th><th>How it is enforced</th>' +
+    '<th class="r">Rejections it prevents</th><th>Enforcement</th></tr></thead><tbody>' +
+    rules.map(function (r) {
+      var amt = reasonFor[r.code] ? reasonAmt[reasonFor[r.code]] /
+        Object.keys(reasonFor).filter(function (x) { return reasonFor[x] === reasonFor[r.code]; }).length : 0;
+      return '<tr><td class="first-sticky"><b>' + esc(r.rule) + '</b>' +
+          '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + r.code + '</div></td>' +
+        '<td style="font-size:11.5px">' + esc(r.cat) + '</td>' +
+        '<td style="font-size:11.5px;color:var(--color-text-muted);max-width:34ch">' + esc(r.enforce) + '</td>' +
+        '<td class="r">' + (amt ? fmtK(amt) : '<span style="color:var(--color-slate-hint)">—</span>') + '</td>' +
+        '<td>' + pill(r.auto ? 'AUTOMATIC' : 'NEEDS A HUMAN', r.auto ? 'green' : 'amber') + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rules.length) + ' of ' + fmtN(RULE_TYPES.length) + ' rule types</b></td>' +
+      '<td></td><td></td><td class="r"><b>' + fmtK(preventable) + '</b></td><td></td></tr></tfoot></table></div>';
+
+  /* per-client compliance */
+  var cliTbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:480px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Client</th><th>Portal</th><th class="r">Rules</th><th class="r">Submitted</th>' +
+    '<th class="r">Rejected</th><th class="r">Rejection rate</th><th class="r">Compliance</th><th>Top failure</th></tr></thead><tbody>' +
+    clients.slice(0, 40).map(function (c) {
+      var comp = 1 - c.rate;
+      var top = [...c.mix].sort(function (a, b) { return b.amount - a.amount; })[0];
+      return '<tr><td class="first-sticky"><b>' + esc(c.client) + '</b></td>' +
+        '<td style="font-size:11px">' + esc(c.portal) + '</td>' +
+        '<td class="r">' + fmtN(c.ocgCount) + '</td>' +
+        '<td class="r">' + fmtK(c.submitted) + '</td>' +
+        '<td class="r" style="color:var(--wv-burgundy)">' + fmtK(c.rejected) + '</td>' +
+        '<td class="r" style="color:' + (c.rate > 0.055 ? 'var(--color-red)' : c.rate > 0.035 ? 'var(--color-amber)' : '') + '">' + fmtPct(c.rate * 100) + '</td>' +
+        '<td class="r" style="color:' + (comp > 0.96 ? 'var(--color-green)' : '') + '"><b>' + fmtPct(comp * 100) + '</b></td>' +
+        '<td style="font-size:11px;color:var(--color-text-muted)">' + esc(top.label.split('/')[0]) + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(clients.length) + ' clients</b></td><td></td>' +
+      '<td class="r"><b>' + fmtN(totalRules) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(M.ebill.submitted) + '</b></td>' +
+      '<td class="r"><b>' + fmtK(M.ebill.rejected) + '</b></td>' +
+      '<td class="r"><b>' + fmtPct(M.ebill.rejRate * 100) + '</b></td>' +
+      '<td class="r"><b>' + fmtPct((1 - M.ebill.rejRate) * 100) + '</b></td><td></td></tr></tfoot></table></div>' +
+    '<div style="margin-top:12px"><span class="tie">Rejections tie to the billing page — ' + fmt$2(M.ebill.rejected) + '</span></div>';
+
+  var controls =
+    '<select class="flt' + (ogCat !== 'all' ? ' on' : '') + '" onchange="ogSet(\'cat\',this.value)">' +
+      '<option value="all">All categories</option>' +
+      cats.map(function (c) { return '<option value="' + esc(c) + '"' + (c === ogCat ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') +
+    '</select>' +
+    ' <input type="search" class="flt-q" placeholder="Search rules…" oninput="ogSet(\'search\',this.value)" value="' + esc(ogSearch) + '" style="min-width:220px">';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    hero('Outside counsel guidelines — ' + M.asOfLabel,
+      fmtN(totalRules) + ' rules, <em>enforced before the bill goes out</em>.',
+      'Guidelines arrive as PDFs nobody reads twice. Parsed into rules the billing engine can apply, ' +
+      fmtPct(autoRules / RULE_TYPES.length * 100) + ' of them are checked automatically on every line — ' +
+      'which is the difference between preventing a rejection and appealing one.',
+      ['intapp', 'ebill', 'e3e']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    secHead('The rule catalogue', fmtN(rules.length) + ' of ' + fmtN(RULE_TYPES.length) + ' types') +
+    panel('What the guidelines actually say', controls, ruleTbl, ' style="margin-bottom:18px"') +
+
+    secHead('Compliance by client', fmtN(clients.length) + ' with guidelines') +
+    panel('Per-client', srcChip('ebill') + ' ' + srcChip('intapp'), cliTbl);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

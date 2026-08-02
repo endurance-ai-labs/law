@@ -13,11 +13,11 @@
 <div id="topbar"></div>
 <main class="page"><div class="demo-wrap" id="root"></div></main>
 
-<script src="/law/vendor/chart.umd.min.js"></script>
-<script src="/law/js/data.js"></script>
-<script src="/law/js/util.js"></script>
-<script src="/law/js/analytics.js"></script>
-<script src="/law/js/nav.js"></script>
+<script src="/law/vendor/chart.umd.min.js?v=20260802a"></script>
+<script src="/law/js/data.js?v=20260802a"></script>
+<script src="/law/js/util.js?v=20260802a"></script>
+<script src="/law/js/analytics.js?v=20260802a"></script>
+<script src="/law/js/nav.js?v=20260802a"></script>
 <script>
 renderTopbar();
 
@@ -106,7 +106,9 @@ function render() {
     page.map(function (m) {
       var off = M.offices.find(function (o) { return o.id === m.office; });
       var burn = m.budget > 0 ? m.standardValue / m.budget : 0;
-      return '<tr><td class="first-sticky"><b>' + esc(m.name.slice(0, 46)) + '</b>' +
+      return '<tr><td class="first-sticky">' +
+          '<a href="/law/matter/?id=' + encodeURIComponent(m.id) + '" style="color:var(--color-blue);text-decoration:none"><b>' +
+          esc(m.name.slice(0, 46)) + '</b></a>' +
           '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + m.id + ' · opened ' + fmtDate(m.opened) + '</div></td>' +
         '<td style="font-size:11.5px">' + esc(m.clientName) + '</td>' +
         '<td style="font-size:11.5px">' + esc(m.practice) + '</td>' +

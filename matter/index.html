@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matter Workspace · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801d">
+<style>
+.mtabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--color-border); margin-bottom: 20px; }
+.mtab { font: inherit; font-size: 12.5px; font-weight: 700; padding: 10px 15px; cursor: pointer;
+  background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--color-text-muted); white-space: nowrap; }
+.mtab:hover { color: var(--color-cloud-whisper); }
+.mtab.on { color: var(--color-blue); border-bottom-color: var(--color-blue); }
+.burn { height: 26px; background: var(--color-bg-3); border-radius: 4px; overflow: hidden; position: relative; }
+.burn i { display: block; height: 100%; background: var(--color-blue); opacity: .85; }
+.burn i.over { background: var(--wv-burgundy); }
+.tl { display: grid; gap: 0; }
+.tl-i { display: grid; grid-template-columns: 120px 22px 1fr; gap: 12px; align-items: start; padding: 11px 0; }
+.tl-i + .tl-i { border-top: 1px solid var(--color-border-soft); }
+.tl-i .d { font-size: 11.5px; color: var(--color-slate-hint); font-variant-numeric: tabular-nums; }
+.tl-i .dot { width: 9px; height: 9px; border-radius: 99px; background: var(--color-blue); margin-top: 4px; }
+.tl-i .b { font-size: 13px; font-weight: 700; }
+.tl-i .s { font-size: 11.5px; color: var(--color-text-muted); margin-top: 2px; }
+</style>
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js?v=20260802a"></script>
+<script src="/law/js/data.js?v=20260802a"></script>
+<script src="/law/js/util.js?v=20260802a"></script>
+<script src="/law/js/analytics.js?v=20260802a"></script>
+<script src="/law/js/nav.js?v=20260802a"></script>
+<script>
+renderTopbar();
+
+/* state — var, before the first render() (TDZ trap) */
+var mwTab = 'overview';
+var mwId = qs('id') || '';
+
+function mwSet(t) { mwTab = t; render(); }
+function mwOpen(id) {
+  mwId = id; mwTab = 'overview';
+  try { history.replaceState({}, '', '/law/matter/?id=' + encodeURIComponent(id)); } catch (e) {}
+  render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* deterministic per-matter detail, derived from the matter itself */
+function seedOf(m) { return parseInt(m.id.replace(/\D/g, ''), 10); }
+
+function teamOf(m) {
+  var M = window.MODEL, s = seedOf(m);
+  var pool = M.timekeepers.filter(function (t) { return t.practice === m.practice && t.office === m.office; });
+  if (pool.length < 4) pool = M.timekeepers.filter(function (t) { return t.practice === m.practice; });
+  var partner = M.tkById[m.partner];
+  /* rotate through the pool rather than multiplying the seed — a multiplier
+     collides whenever it shares a factor with the pool length, which quietly
+     collapsed a six-person team down to two */
+  var picked = [partner];
+  var start = s % pool.length;
+  for (var i = 0; i < 5 && i < pool.length; i++) picked.push(pool[(start + i) % pool.length]);
+  picked = picked.filter(function (t, i, a) { return t && a.indexOf(t) === i; });
+  /* split the matter's hours by class weight so the sum ties to the matter */
+  var w = picked.map(function (t) { return t.cls === 'EP' ? 1 : t.cls === 'IP' ? 1.6 : t.cls === 'CNS' ? 1.4 : t.cls === 'ASC' ? 3.2 : 2.0; });
+  var wSum = w.reduce(function (a, b) { return a + b; }, 0);
+  return picked.map(function (t, i) {
+    var hrs = m.hours * (w[i] / wSum);
+    return { t: t, hours: hrs, value: hrs * t.rate, cost: hrs * t.costRate };
+  });
+}
+
+/* UTBMS phase codes — the standard task set clients bill against */
+var PHASES = [
+  ['L100', 'Case assessment, development and administration', 0.16],
+  ['L200', 'Pre-trial pleadings and motions', 0.24],
+  ['L300', 'Discovery', 0.33],
+  ['L400', 'Trial preparation and trial', 0.19],
+  ['L500', 'Appeal', 0.08],
+];
+var PHASES_TX = [
+  ['B100', 'Case assessment and planning', 0.14],
+  ['B200', 'Due diligence', 0.29],
+  ['B300', 'Drafting and negotiation', 0.34],
+  ['B400', 'Regulatory and third-party consents', 0.13],
+  ['B500', 'Closing and post-closing', 0.10],
+];
+
+function phasesOf(m) {
+  var base = m.practiceId === 'LIT' || m.practiceId === 'REG' ? PHASES : PHASES_TX;
+  var s = seedOf(m);
+  var w = base.map(function (p, i) { return p[2] * (0.7 + ((s * (i + 2)) % 60) / 100); });
+  var wSum = w.reduce(function (a, b) { return a + b; }, 0);
+  return base.map(function (p, i) {
+    var share = w[i] / wSum;
+    return { code: p[0], label: p[1], hours: m.hours * share,
+             value: m.standardValue * share, budget: m.budget * p[2] };
+  });
+}
+
+function docsOf(m) {
+  var s = seedOf(m);
+  var kinds = m.practiceId === 'LIT'
+    ? ['Complaint', 'Answer', 'Motion to dismiss', 'Discovery requests', 'Deposition summary', 'Expert report', 'Brief in opposition', 'Privilege log']
+    : ['Term sheet', 'Purchase agreement', 'Disclosure schedules', 'Due diligence memo', 'Board resolutions', 'Closing checklist', 'Officer certificate', 'Escrow agreement'];
+  return kinds.map(function (k, i) {
+    var tk = window.MODEL.tkById[m.partner];
+    return { name: k, ver: 1 + ((s + i * 7) % 14), author: tk ? tk.name : '—',
+             modified: '2026-0' + (((s + i) % 7) + 1) + '-' + String(((s + i * 3) % 27) + 1).padStart(2, '0'),
+             type: i % 3 === 0 ? 'DOCX' : i % 3 === 1 ? 'PDF' : 'XLSX' };
+  });
+}
+
+function docketOf(m) {
+  if (m.practiceId !== 'LIT' && m.practiceId !== 'REG') return [];
+  var s = seedOf(m);
+  var evts = ['Response to motion to dismiss due', 'Expert disclosure deadline', 'Close of fact discovery',
+              'Dispositive motion deadline', 'Pre-trial conference', 'Joint status report due'];
+  return evts.map(function (e, i) {
+    var day = ((s + i * 11) % 90) + 1;
+    var d = new Date(2026, 7, day);
+    return { event: e, due: d.toISOString().slice(0, 10), days: Math.round((d - new Date(2026, 6, 31)) / 86400000),
+             rule: i % 2 === 0 ? 'FRCP 12(b) + 21 days' : 'Scheduling order ¶' + (i + 3),
+             owner: window.MODEL.tkById[m.partner].name };
+  }).sort(function (a, b) { return a.due < b.due ? -1 : 1; });
+}
+
+function billsOf(m) {
+  var s = seedOf(m);
+  var n = Math.max(1, Math.min(8, Math.round(m.hours / 90)));
+  var out = [];
+  for (var i = 0; i < n; i++) {
+    var gross = m.standardValue / n;
+    var disc = gross * (m.discount / m.standardValue);
+    var wd = gross * (m.writeDown / m.standardValue);
+    var billed = gross - disc - wd;
+    var rejected = m.ebill && (s + i) % 3 === 0 ? billed * 0.04 : 0;
+    out.push({ no: 'INV-' + (100000 + s + i * 13), period: 'Month ' + (i + 1),
+               gross: gross, disc: disc, wd: wd, billed: billed,
+               paid: billed * m.collectPct, rejected: rejected,
+               status: i === n - 1 ? 'Submitted' : 'Paid' });
+  }
+  return out;
+}
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+  var money = can('fin'), margin = can('margin');
+  var visible = scopeMatters(M.matters);
+
+  /* no id, or a screened/out-of-scope id → picker */
+  var m = mwId ? visible.filter(function (x) { return x.id === mwId; })[0] : null;
+  if (!m) {
+    var blocked = mwId && M.matterById[mwId];
+    var picks = visible.filter(function (x) { return x.active; })
+      .sort(function (a, b) { return b.collected - a.collected; }).slice(0, 12);
+    document.getElementById('root').innerHTML =
+      wallNotice() +
+      hero('Matter workspace',
+        mwId ? 'That matter is <em>not available</em> to you.' : 'Open a <em>matter</em>.',
+        blocked
+          ? 'The matter exists but is outside your scope — either screened by an ethical wall or belonging to another practice group. The attempt has been logged.'
+          : 'Everything the firm knows about one matter, joined from every connected system. Pick one below, or open any matter from the register.',
+        ['e3e', 'iman', 'docket', 'ebill']) +
+      panel('Largest open matters', srcChip('e3e') + ' · click to open',
+        '<div class="rank">' + picks.map(function (x, i) {
+          return '<button class="rk" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--color-border-soft);font:inherit;color:inherit;cursor:pointer" onclick="mwOpen(\'' + x.id + '\')">' +
+            '<span class="n">' + String(i + 1).padStart(2, '0') + '</span>' +
+            '<span><span class="t">' + esc(x.name.slice(0, 52)) + '</span>' +
+            '<span class="s">' + esc(x.clientName) + ' · ' + esc(x.practice) + ' · ' + x.id + '</span></span>' +
+            '<span class="v">' + (money ? fmtK(x.collected) : fmtN(x.hours, 0) + ' hrs') + '</span></button>';
+        }).join('') + '</div>' +
+        '<div style="margin-top:14px"><a class="fchip link" href="/law/matters/">Open the full register →</a></div>');
+    return;
+  }
+
+  var team = teamOf(m);
+  var phases = phasesOf(m);
+  var docs = docsOf(m);
+  var docket = docketOf(m);
+  var bills = billsOf(m);
+  var client = M.clientById[m.clientId];
+  var off = M.offices.find(function (o) { return o.id === m.office; });
+  var burn = m.budget > 0 ? m.standardValue / m.budget : 0;
+
+  /* ---------- KPI band ---------- */
+  var kpis = [];
+  if (money) {
+    kpis.push(kpi('Collected', fmtK(m.collected), fmtPct(m.collectPct * 100) + ' of billed', ''));
+    kpis.push(kpi('Standard value', fmtK(m.standardValue), fmtN(m.hours, 0) + ' hours', ''));
+    kpis.push(kpi('Realization', fmtPct(m.collected / m.standardValue * 100), 'collected ÷ standard', 'green'));
+    kpis.push(kpi('Budget burn', m.budget > 0 ? fmtPct(burn * 100) : '—',
+      m.budget > 0 ? 'of ' + fmtK(m.budget) : 'no budget set', m.overBudget ? 'amber' : ''));
+  }
+  if (margin) {
+    kpis.push(kpi('Contribution margin', fmtPct(m.margin / m.collected * 100), fmtK(m.margin), m.margin < 0 ? 'amber' : 'green',
+      'Collected − cost of hours − allocated overhead|Cost of hours ' + fmt$(m.workCost) + '|Overhead ' + fmt$(m.overhead)));
+    kpis.push(kpi('Cost per hour', fmt$(m.workCost / m.hours), 'blended, from payroll', ''));
+  }
+  kpis.push(kpi('Effective rate', money ? fmt$(m.collected / m.hours) : '—', money ? 'per hour worked' : 'requires financial access', ''));
+  kpis.push(kpi('Team', fmtN(team.length), 'timekeepers on the matter', ''));
+  kpis.push(kpi('Leverage', ((m.hours - m.partnerHours) / m.partnerHours).toFixed(2), 'non-partner per partner hour', ''));
+  kpis.push(kpi('Documents', fmtN(docs.length * 37), 'in the iManage workspace', ''));
+  if (docket.length) kpis.push(kpi('Next deadline', docket[0].days + ' days', esc(docket[0].event.slice(0, 30)), docket[0].days < 14 ? 'amber' : ''));
+  if (money) kpis.push(kpi('Unbilled WIP', fmtK(m.wip), 'not yet invoiced', m.wip > 60000 ? 'amber' : ''));
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* ---------- tabs ---------- */
+  var TABS = [['overview', 'Overview'], ['team', 'Team & staffing'], ['budget', 'Budget & burn'],
+              ['bills', 'Bills & payments'], ['docs', 'Documents']]
+    .concat(docket.length ? [['docket', 'Docket & deadlines']] : [])
+    .concat([['risk', 'Risk'], ['activity', 'Activity']]);
+  var tabs = '<div class="mtabs">' + TABS.map(function (t) {
+    return '<button class="mtab' + (mwTab === t[0] ? ' on' : '') + '" onclick="mwSet(\'' + t[0] + '\')">' + t[1] + '</button>';
+  }).join('') + '</div>';
+
+  var body = '';
+
+  if (mwTab === 'overview') {
+    body =
+      '<div class="row2">' +
+      panel('Matter detail', srcChip('e3e'),
+        '<table class="demo-tbl"><tbody>' +
+        [['Matter number', m.id], ['Client', esc(m.clientName)], ['Practice group', esc(m.practice)],
+         ['Office', esc(off ? off.name : m.office)], ['Billing partner', esc(m.partnerName)],
+         ['Fee arrangement', esc(m.feeLabel)], ['Opened', fmtDate(m.opened)],
+         ['Status', m.active ? 'Open' : 'Closed'],
+         ['Client industry', esc(client.industry)], ['Client since', client.since],
+         ['E-billing portal', client.ebillPortal ? esc(client.ebillPortal) : 'None'],
+         ['Guideline rules', client.ocgCount ? fmtN(client.ocgCount) : '—']]
+        .map(function (r) { return '<tr><td style="color:var(--color-text-muted)">' + r[0] + '</td><td><b>' + r[1] + '</b></td></tr>'; }).join('') +
+        '</tbody></table>') +
+      panel('Where it stands', srcChip('wv'),
+        (money ? '<div class="wf">' +
+          [['Standard value', m.standardValue, ''], ['Discounts', m.discount, 'leak'],
+           ['Write-downs', m.writeDown, 'leak'], ['Billed', m.billed, ''],
+           ['Collected', m.collected, 'net']].map(function (r) {
+            return '<div class="wf-row"><div class="wf-l">' + r[0] + '</div>' +
+              '<div class="wf-track"><div class="wf-bar ' + r[2] + '" style="width:' + (r[1] / m.standardValue * 100).toFixed(1) + '%"></div></div>' +
+              '<div class="wf-v">' + fmtK(r[1]) + '</div></div>';
+          }).join('') + '</div>' : '<div style="color:var(--color-text-muted);font-size:13px">Financial detail requires financial access.</div>') +
+        (m.budget > 0 ? '<div style="margin-top:18px"><div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--color-slate-hint);margin-bottom:7px">Budget burn</div>' +
+          '<div class="burn"><i class="' + (burn > 1 ? 'over' : '') + '" style="width:' + Math.min(100, burn * 100).toFixed(1) + '%"></i></div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--color-text-muted);margin-top:6px">' +
+          '<span>' + fmtK(m.standardValue) + ' of ' + fmtK(m.budget) + '</span><span style="color:' + (burn > 1 ? 'var(--wv-burgundy)' : '') + '">' + fmtPct(burn * 100) + '</span></div></div>' : '')) +
+      '</div>';
+  }
+
+  if (mwTab === 'team') {
+    body = panel('Who worked on it', srcChip('e3e') + ' ' + srcChip('adp'),
+      '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+      '<thead><tr><th class="first-sticky">Timekeeper</th><th>Class</th><th class="r">Hours</th><th class="r">Share</th>' +
+      (money ? '<th class="r">Rate</th><th class="r">Value</th>' : '') +
+      (margin ? '<th class="r">Cost/hr</th><th class="r">Cost</th><th class="r">Spread</th>' : '') + '</tr></thead><tbody>' +
+      team.map(function (x) {
+        return '<tr><td class="first-sticky"><b>' + esc(x.t.name) + '</b>' +
+            '<div style="font-size:10.5px;color:var(--color-slate-hint)">' + x.t.id + (x.t.classYear ? ' · class of ' + x.t.classYear : '') + '</div></td>' +
+          '<td style="font-size:11.5px">' + esc(x.t.clsLabel) + '</td>' +
+          '<td class="r">' + fmtN(x.hours, 1) + '</td>' +
+          '<td class="r">' + fmtPct(x.hours / m.hours * 100) + '</td>' +
+          (money ? '<td class="r">' + fmt$(x.t.rate) + '</td><td class="r">' + fmtK(x.value) + '</td>' : '') +
+          (margin ? '<td class="r" style="color:var(--color-text-muted)">' + fmt$(x.t.costRate) + '</td>' +
+                    '<td class="r">' + fmtK(x.cost) + '</td>' +
+                    '<td class="r" style="color:var(--color-green)">' + fmtPct((1 - x.t.costRate / x.t.rate) * 100) + '</td>' : '') +
+          '</tr>';
+      }).join('') +
+      '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + team.length + ' timekeepers</b></td><td></td>' +
+        '<td class="r"><b>' + fmtN(m.hours, 1) + '</b></td><td class="r">100.0%</td>' +
+        (money ? '<td></td><td class="r"><b>' + fmtK(m.standardValue) + '</b></td>' : '') +
+        (margin ? '<td></td><td class="r"><b>' + fmtK(m.workCost) + '</b></td><td></td>' : '') +
+        '</tr></tfoot></table></div>' +
+      '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+        'Leverage on this matter is <b>' + ((m.hours - m.partnerHours) / m.partnerHours).toFixed(2) + '</b> against a group norm of <b>' +
+        M.byPractice[m.practice].leverage.toFixed(2) + '</b>. ' +
+        (margin ? 'Whether a matter can be profitable is largely decided here, before anyone starts work.' : '') +
+      '</div>');
+  }
+
+  if (mwTab === 'budget') {
+    body = panel('Budget by phase and task', srcChip('e3e') + ' · UTBMS codes',
+      '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+      '<thead><tr><th class="first-sticky">Code</th><th>Phase</th><th class="r">Hours</th>' +
+      (money ? '<th class="r">Value</th><th class="r">Budget</th><th class="r">Variance</th><th class="r">Burn</th>' : '') +
+      '</tr></thead><tbody>' +
+      phases.map(function (p) {
+        var v = p.budget - p.value;
+        return '<tr><td class="first-sticky"><b>' + p.code + '</b></td>' +
+          '<td style="font-size:12px">' + esc(p.label) + '</td>' +
+          '<td class="r">' + fmtN(p.hours, 1) + '</td>' +
+          (money ? '<td class="r">' + fmtK(p.value) + '</td>' +
+                   '<td class="r" style="color:var(--color-text-muted)">' + (p.budget ? fmtK(p.budget) : '—') + '</td>' +
+                   '<td class="r" style="color:' + (v < 0 ? 'var(--color-red)' : 'var(--color-green)') + '">' + (p.budget ? fmtK(v) : '—') + '</td>' +
+                   '<td class="r">' + (p.budget ? fmtPct(p.value / p.budget * 100) : '—') + '</td>' : '') +
+          '</tr>';
+      }).join('') +
+      '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>Total</b></td><td></td>' +
+        '<td class="r"><b>' + fmtN(m.hours, 1) + '</b></td>' +
+        (money ? '<td class="r"><b>' + fmtK(m.standardValue) + '</b></td>' +
+                 '<td class="r"><b>' + (m.budget ? fmtK(m.budget) : '—') + '</b></td>' +
+                 '<td class="r" style="color:' + (m.budget - m.standardValue < 0 ? 'var(--color-red)' : 'var(--color-green)') + '"><b>' +
+                   (m.budget ? fmtK(m.budget - m.standardValue) : '—') + '</b></td>' +
+                 '<td class="r"><b>' + (m.budget ? fmtPct(burn * 100) : '—') + '</b></td>' : '') +
+        '</tr></tfoot></table></div>' +
+      (m.overBudget ? '<div class="wall-note" style="margin-top:16px;margin-bottom:0"><span>⚠</span><div>' +
+        '<b>Over the agreed budget.</b> Standard value is ' + fmtPct((burn - 1) * 100) + ' above the figure agreed with the client. ' +
+        'On a fixed-fee or capped arrangement that overrun is absorbed by the firm.</div></div>' : ''));
+  }
+
+  if (mwTab === 'bills') {
+    body = panel('Bills and payments', srcChip('e3e') + ' ' + srcChip('ebill'),
+      '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+      '<thead><tr><th class="first-sticky">Invoice</th><th>Period</th>' +
+      (money ? '<th class="r">Gross</th><th class="r">Discount</th><th class="r">Write-down</th><th class="r">Billed</th><th class="r">Paid</th><th class="r">Rejected</th>' : '') +
+      '<th>Status</th></tr></thead><tbody>' +
+      bills.map(function (b) {
+        return '<tr><td class="first-sticky"><b>' + b.no + '</b></td>' +
+          '<td style="font-size:11.5px">' + b.period + '</td>' +
+          (money ? '<td class="r">' + fmtK(b.gross) + '</td>' +
+                   '<td class="r" style="color:var(--wv-burgundy)">−' + fmtK(b.disc) + '</td>' +
+                   '<td class="r" style="color:var(--wv-burgundy)">−' + fmtK(b.wd) + '</td>' +
+                   '<td class="r"><b>' + fmtK(b.billed) + '</b></td>' +
+                   '<td class="r">' + fmtK(b.paid) + '</td>' +
+                   '<td class="r" style="color:' + (b.rejected ? 'var(--color-red)' : 'var(--color-slate-hint)') + '">' +
+                     (b.rejected ? fmtK(b.rejected) : '—') + '</td>' : '') +
+          '<td>' + pill(b.status.toUpperCase(), b.status === 'Paid' ? 'green' : 'blue') + '</td></tr>';
+      }).join('') +
+      '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + bills.length + ' invoices</b></td><td></td>' +
+        (money ? '<td class="r"><b>' + fmtK(m.standardValue) + '</b></td>' +
+                 '<td class="r"><b>−' + fmtK(m.discount) + '</b></td>' +
+                 '<td class="r"><b>−' + fmtK(m.writeDown) + '</b></td>' +
+                 '<td class="r"><b>' + fmtK(m.billed) + '</b></td>' +
+                 '<td class="r"><b>' + fmtK(m.collected) + '</b></td>' +
+                 '<td class="r"><b>' + fmtK(bills.reduce(function (s, b) { return s + b.rejected; }, 0)) + '</b></td>' : '') +
+        '<td></td></tr></tfoot></table></div>' +
+      (m.ebill ? '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+        'Submitted through <b>' + esc(client.ebillPortal) + '</b> under <b>' + client.ocgCount + '</b> parsed guideline rules. ' +
+        'Rejected lines are checked against those rules before the next submission. ' + tie('/law/billing/', 'Rejection analytics') +
+        '</div>' : ''));
+  }
+
+  if (mwTab === 'docs') {
+    body = panel('Documents', srcChip('iman') + ' · metadata only — content stays in the DMS',
+      '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+      '<thead><tr><th class="first-sticky">Document</th><th>Type</th><th class="r">Version</th><th>Author</th><th>Last modified</th></tr></thead><tbody>' +
+      docs.map(function (d) {
+        return '<tr><td class="first-sticky"><b>' + esc(d.name) + '</b></td>' +
+          '<td style="font-size:11px">' + d.type + '</td>' +
+          '<td class="r">v' + d.ver + '</td>' +
+          '<td style="font-size:11.5px">' + esc(d.author) + '</td>' +
+          '<td style="font-size:11.5px">' + fmtDate(d.modified) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted)">' +
+        'Showing the primary working set. The full workspace holds <b>' + fmtN(docs.length * 37) + '</b> documents. ' +
+        'The portal reads metadata only — no document content is copied, indexed or stored outside iManage.' +
+      '</div>');
+  }
+
+  if (mwTab === 'docket' && docket.length) {
+    body = panel('Docket and deadlines', srcChip('docket') + ' · rules-computed',
+      '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+      '<thead><tr><th class="first-sticky">Event</th><th>Due</th><th class="r">Days</th><th>Rule</th><th>Responsible</th><th>Status</th></tr></thead><tbody>' +
+      docket.map(function (d) {
+        return '<tr><td class="first-sticky"><b>' + esc(d.event) + '</b></td>' +
+          '<td>' + fmtDate(d.due) + '</td>' +
+          '<td class="r" style="color:' + (d.days < 14 ? 'var(--color-red)' : d.days < 30 ? 'var(--color-amber)' : '') + '"><b>' + d.days + '</b></td>' +
+          '<td style="font-size:11.5px;color:var(--color-text-muted)">' + esc(d.rule) + '</td>' +
+          '<td style="font-size:11.5px">' + esc(d.owner) + '</td>' +
+          '<td>' + pill(d.days < 14 ? 'IMMINENT' : d.days < 30 ? 'SOON' : 'TRACKED', d.days < 14 ? 'red' : d.days < 30 ? 'amber' : 'green') + '</td></tr>';
+      }).join('') + '</tbody></table></div>');
+  }
+
+  if (mwTab === 'risk') {
+    var walled = isWalled(m.id);
+    body = panel('Risk and compliance', srcChip('intapp'),
+      '<div class="triage">' +
+      [['Conflicts', 'Cleared at intake ' + fmtDate(m.opened) + ' · corporate family expanded · no waivers required', 'green'],
+       ['Ethical wall', walled ? 'This matter is under a screen' : 'No screen on this matter', walled ? 'red' : 'green'],
+       ['Engagement letter', 'Executed and on file', 'green'],
+       ['Outside counsel guidelines', client.ocgCount ? fmtN(client.ocgCount) + ' rules parsed and enforced pre-bill' : 'None supplied by this client', client.ocgCount ? 'green' : ''],
+       ['Staffing restrictions', client.ocgCount ? 'All timekeepers on this matter are approved under the client schedule' : 'No restrictions', 'green'],
+       ['Rate approval', client.ocgCount ? 'Rates match the approved schedule' : 'Standard rate card applies', 'green'],
+       ['Trust balance', 'No client funds held on this matter', 'green'],
+       ['Professional indemnity', 'No claims or circumstances recorded', 'green']]
+      .map(function (r) {
+        return '<div class="tri ' + (r[2] || '') + '"><span class="sev"></span>' +
+          '<div><div class="t">' + r[0] + '</div><div class="d">' + r[1] + '</div></div>' +
+          '<div class="a">' + (r[2] === 'red' ? pill('SCREENED', 'red') : pill('CLEAR', 'green')) + '</div></div>';
+      }).join('') + '</div>' +
+      '<div style="margin-top:14px;font-size:12.5px;color:var(--color-text-muted)">' +
+        'Each line is a live check against the connected system, not a checklist someone ticked at intake. ' +
+        tie('/law/ocg/', 'Guidelines') + ' ' + tie('/law/walls/', 'Walls') +
+      '</div>');
+  }
+
+  if (mwTab === 'activity') {
+    var acts = [
+      ['2026-07-28', 'iManage', 'Document revised', esc(docs[0].name) + ' to v' + docs[0].ver + ' by ' + esc(m.partnerName)],
+      ['2026-07-24', 'Elite 3E', 'Invoice submitted', bills[bills.length - 1].no + ' for ' + (money ? fmtK(bills[bills.length - 1].billed) : 'the period')],
+      ['2026-07-19', 'Microsoft 365', 'Client meeting', '2.5 hours with ' + esc(m.clientName) + ' — 3 attendees'],
+      ['2026-07-15', 'Intapp Time', 'Time entered', fmtN(m.hours / 12, 1) + ' hours across ' + team.length + ' timekeepers'],
+    ].concat(docket.length ? [['2026-07-11', 'Docket Alarm', 'Deadline computed', esc(docket[0].event) + ' — ' + fmtDate(docket[0].due)]] : [])
+     .concat([
+      ['2026-07-02', 'Elite 3E', 'Payment received', money ? fmtK(m.collected / bills.length) + ' applied' : 'applied to the oldest invoice'],
+      [m.opened, 'Intapp', 'Matter opened', 'Conflicts cleared · engagement letter executed'],
+    ]);
+    body = panel('Activity — every system, one timeline', srcRow(['e3e', 'iman', 'graph', 'docket', 'intapp']),
+      '<div class="tl">' + acts.map(function (a) {
+        return '<div class="tl-i"><div class="d">' + fmtDate(a[0]) + '</div><div class="dot"></div>' +
+          '<div><div class="b">' + esc(a[2]) + ' <span style="font-size:10px;font-weight:800;color:var(--color-slate-hint);letter-spacing:.08em">' + esc(a[1]).toUpperCase() + '</span></div>' +
+          '<div class="s">' + a[3] + '</div></div></div>';
+      }).join('') + '</div>' +
+      '<div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-muted);line-height:1.65">' +
+        'Five systems, one chronology. Assembling this by hand means opening five applications and reconciling five different ' +
+        'ideas of what a matter is called.' +
+      '</div>');
+  }
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero(esc(m.clientName) + ' · ' + m.id,
+      esc(m.name.length > 58 ? m.name.slice(0, 56) + '…' : m.name),
+      esc(m.practice) + ' · ' + esc(off ? off.name : m.office) + ' · ' + esc(m.feeLabel) + ' · billing partner ' + esc(m.partnerName) +
+      ' · opened ' + fmtDate(m.opened) + ' · ' + (m.active ? 'open' : 'closed'),
+      ['e3e', 'iman', 'ebill', 'adp', 'docket', 'intapp']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+    tabs + body +
+    '<div style="margin-top:20px"><a class="fchip link" href="/law/matters/">← Back to the register</a></div>';
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

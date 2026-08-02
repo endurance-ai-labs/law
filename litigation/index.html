@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Docket &amp; Deadlines · Whitmore Vance LLP</title>
+<link rel="stylesheet" href="/law/css/theme.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/endurance.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/demo.css?v=20260801d">
+<link rel="stylesheet" href="/law/css/lawfirm.css?v=20260801d">
+</head>
+<body>
+<div id="topbar"></div>
+<main class="page"><div class="demo-wrap" id="root"></div></main>
+
+<script src="/law/vendor/chart.umd.min.js?v=20260802a"></script>
+<script src="/law/js/data.js?v=20260802a"></script>
+<script src="/law/js/util.js?v=20260802a"></script>
+<script src="/law/js/analytics.js?v=20260802a"></script>
+<script src="/law/js/nav.js?v=20260802a"></script>
+<script>
+renderTopbar();
+
+/* filter state — var, before the first render() (TDZ trap) */
+var dkWindow = '30';
+var dkCourt = 'all';
+var dkOwner = 'all';
+var dkSearch = '';
+function dkSet(k, v) {
+  if (k === 'window') dkWindow = v;
+  if (k === 'court') dkCourt = v;
+  if (k === 'owner') dkOwner = v;
+  if (k === 'search') dkSearch = (v || '').toLowerCase();
+  render();
+}
+
+var COURTS = [
+  'S.D.N.Y.', 'E.D.N.Y.', 'N.D. Ill.', 'N.D. Cal.', 'N.D. Tex.', 'S.D. Fla.',
+  'Delaware Chancery', 'New York Supreme, Commercial Division', 'Cook County Circuit',
+  'JAMS arbitration', 'AAA arbitration', 'Second Circuit', 'Ninth Circuit',
+];
+var EVENTS = [
+  ['Response to motion to dismiss', 'FRCP 12 + local rule', 'high'],
+  ['Expert disclosure', 'Scheduling order ¶6', 'high'],
+  ['Close of fact discovery', 'Scheduling order ¶4', 'high'],
+  ['Dispositive motion deadline', 'Scheduling order ¶8', 'high'],
+  ['Opposition to summary judgment', 'FRCP 56 + 21 days', 'high'],
+  ['Reply in support', 'Local rule 7.1(c)', 'med'],
+  ['Joint status report', 'Standing order', 'med'],
+  ['Pre-trial conference', 'FRCP 16', 'med'],
+  ['Rule 26(a) initial disclosures', 'FRCP 26(a)(1)', 'med'],
+  ['Deposition — 30(b)(6)', 'Notice served', 'med'],
+  ['Privilege log due', 'Meet and confer agreement', 'low'],
+  ['Mediation statement', 'Mediation order', 'low'],
+  ['Notice of appeal', 'FRAP 4 — 30 days', 'high'],
+  ['Answer to amended complaint', 'FRCP 15(a)(3)', 'high'],
+];
+
+/* deterministic docket derived from live litigation matters */
+function DOCKET() {
+  var M = window.MODEL;
+  var lit = scopeMatters(M.matters).filter(function (m) {
+    return (m.practiceId === 'LIT' || m.practiceId === 'REG') && m.active;
+  });
+  var out = [];
+  lit.forEach(function (m, i) {
+    var s = parseInt(m.id.replace(/\D/g, ''), 10);
+    var n = 1 + (s % 3);
+    for (var k = 0; k < n; k++) {
+      var e = EVENTS[(s + k * 5) % EVENTS.length];
+      var days = ((s * (k + 3)) % 120) - 6;   /* a few already overdue */
+      var court = COURTS[(s + k) % COURTS.length];
+      var tk = M.tkById[m.partner];
+      /* the associate who actually holds it */
+      var pool = M.timekeepers.filter(function (t) { return t.practice === m.practice && t.cls === 'ASC'; });
+      var assoc = pool.length ? pool[(s + k) % pool.length] : null;
+      var unassigned = (s + k) % 17 === 0;
+      out.push({
+        matter: m, event: e[0], rule: e[1], sev: e[2], court: court,
+        days: days, due: addDays('2026-07-31', days),
+        partner: tk.name, owner: unassigned ? null : (assoc ? assoc.name : tk.name),
+        judge: 'Hon. ' + ['Alvarez', 'Brennan', 'Castellano', 'Duvall', 'Eastwood', 'Fitzgerald', 'Grimaldi', 'Hollis'][(s + k) % 8],
+        opposing: ['Pemberton & Shaw LLP', 'Grierson Frost', 'Aldridge Vance', 'Northcott Ryle LLP',
+                   'Sable & Marchetti', 'Kingsbury Dunne'][(s + k) % 6],
+      });
+    }
+  });
+  return out.sort(function (a, b) { return a.days - b.days; });
+}
+
+function render() {
+  var M = window.MODEL;
+  if (!currentPersona()) return;
+
+  var all = DOCKET();
+  var win = dkWindow === 'all' ? 99999 : parseInt(dkWindow, 10);
+  var rows = all.filter(function (d) {
+    if (d.days > win) return false;
+    if (dkCourt !== 'all' && d.court !== dkCourt) return false;
+    if (dkOwner === 'unassigned' && d.owner) return false;
+    if (dkOwner === 'overdue' && d.days >= 0) return false;
+    if (dkSearch && (d.event + ' ' + d.matter.name + ' ' + d.matter.clientName + ' ' + d.court).toLowerCase().indexOf(dkSearch) === -1) return false;
+    return true;
+  });
+
+  var overdue = all.filter(function (d) { return d.days < 0; });
+  var wk = all.filter(function (d) { return d.days >= 0 && d.days <= 7; });
+  var unassigned = all.filter(function (d) { return !d.owner && d.days <= 30; });
+  var highRisk = all.filter(function (d) { return d.sev === 'high' && d.days <= 14; });
+  var courts = [...new Set(all.map(function (d) { return d.court; }))].sort();
+
+  var kpis = [
+    kpi('Tracked deadlines', fmtN(all.length), 'across ' + fmtN(new Set(all.map(function (d) { return d.matter.id; })).size) + ' active matters', ''),
+    kpi('Overdue', fmtN(overdue.length), 'past the computed date', overdue.length ? 'amber' : 'green',
+      'Deadlines whose computed date has passed without a filing recorded|Every one is a malpractice conversation waiting to happen'),
+    kpi('Inside 7 days', fmtN(wk.length), 'need attention this week', wk.length > 40 ? 'amber' : ''),
+    kpi('Unassigned', fmtN(unassigned.length), 'no responsible attorney', unassigned.length ? 'amber' : 'green',
+      'A deadline inside 30 days with nobody named against it|This is the single most dangerous row on the page'),
+    kpi('High-severity inside 14 days', fmtN(highRisk.length), 'dispositive or jurisdictional', highRisk.length ? 'amber' : 'green'),
+    kpi('Courts and forums', fmtN(courts.length), 'each with its own rule set', ''),
+    kpi('Rules engine', 'Live', 'dates computed, not typed', 'green',
+      'Deadlines are derived from the governing rule and the triggering event|A hand-typed date is a hand-typed error'),
+    kpi('Last docket sync', '38 min ago', 'Docket Alarm · hourly', ''),
+  ];
+  while (kpis.length % 4 !== 0) kpis.pop();
+
+  /* the queue */
+  var tbl = '<div class="demo-tbl-wrap grid-scroll" style="max-height:620px"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Deadline</th><th>Matter</th><th>Client</th><th>Court / forum</th>' +
+    '<th>Due</th><th class="r">Days</th><th>Rule</th><th>Responsible</th><th>Status</th></tr></thead><tbody>' +
+    rows.slice(0, 70).map(function (d) {
+      var tone = d.days < 0 ? 'red' : d.days <= 7 ? 'red' : d.days <= 21 ? 'amber' : 'green';
+      var label = d.days < 0 ? 'OVERDUE' : d.days <= 7 ? 'THIS WEEK' : d.days <= 21 ? 'SOON' : 'TRACKED';
+      return '<tr><td class="first-sticky"><b>' + esc(d.event) + '</b>' +
+          (d.sev === 'high' ? ' <span style="font-size:9px;font-weight:800;color:var(--wv-burgundy);letter-spacing:.08em">HIGH</span>' : '') + '</td>' +
+        '<td style="font-size:11.5px"><a href="/law/matter/?id=' + encodeURIComponent(d.matter.id) + '" style="color:var(--color-blue);text-decoration:none">' +
+          esc(d.matter.name.slice(0, 30)) + '</a></td>' +
+        '<td style="font-size:11.5px">' + esc(d.matter.clientName) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(d.court) + '</td>' +
+        '<td style="font-size:11.5px">' + fmtDate(d.due) + '</td>' +
+        '<td class="r" style="color:' + (d.days < 0 ? 'var(--color-red)' : d.days <= 7 ? 'var(--color-red)' : d.days <= 21 ? 'var(--color-amber)' : '') + '"><b>' +
+          (d.days < 0 ? d.days : '+' + d.days) + '</b></td>' +
+        '<td style="font-size:11px;color:var(--color-text-muted)">' + esc(d.rule) + '</td>' +
+        '<td style="font-size:11.5px">' + (d.owner ? esc(d.owner) :
+          '<span style="color:var(--color-red);font-weight:800">UNASSIGNED</span>') + '</td>' +
+        '<td>' + pill(label, tone) + '</td></tr>';
+    }).join('') +
+    '</tbody><tfoot><tr class="totals-row"><td class="first-sticky"><b>' + fmtN(rows.length) + ' of ' + fmtN(all.length) + ' deadlines</b></td>' +
+      '<td></td><td></td><td></td><td></td><td></td><td></td>' +
+      '<td class="r"><b>' + fmtN(rows.filter(function (d) { return !d.owner; }).length) + ' unassigned</b></td><td></td></tr></tfoot></table></div>';
+
+  /* judge & venue */
+  var byCourt = {};
+  all.forEach(function (d) { byCourt[d.court] = (byCourt[d.court] || 0) + 1; });
+  var venue = '<div class="demo-tbl-wrap grid-scroll"><table class="demo-tbl">' +
+    '<thead><tr><th class="first-sticky">Court / forum</th><th class="r">Deadlines</th><th class="r">Matters</th>' +
+    '<th class="r">Inside 14 days</th><th>Most common event</th></tr></thead><tbody>' +
+    courts.sort(function (a, b) { return byCourt[b] - byCourt[a]; }).slice(0, 12).map(function (c) {
+      var inC = all.filter(function (d) { return d.court === c; });
+      var counts = {};
+      inC.forEach(function (d) { counts[d.event] = (counts[d.event] || 0) + 1; });
+      var top = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; })[0];
+      return '<tr><td class="first-sticky"><b>' + esc(c) + '</b></td>' +
+        '<td class="r">' + fmtN(inC.length) + '</td>' +
+        '<td class="r">' + fmtN(new Set(inC.map(function (d) { return d.matter.id; })).size) + '</td>' +
+        '<td class="r">' + fmtN(inC.filter(function (d) { return d.days <= 14; }).length) + '</td>' +
+        '<td style="font-size:11.5px;color:var(--color-text-muted)">' + esc(top) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+
+  var sel = function (key, cur, opts) {
+    return '<select class="flt' + (cur !== 'all' && cur !== '30' ? ' on' : '') + '" onchange="dkSet(\'' + key + '\',this.value)">' +
+      opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === cur ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>';
+  };
+  var controls =
+    sel('window', dkWindow, [['7', 'Next 7 days'], ['14', 'Next 14 days'], ['30', 'Next 30 days'], ['90', 'Next 90 days'], ['all', 'All deadlines']]) + ' ' +
+    sel('court', dkCourt, [['all', 'All courts']].concat(courts.map(function (c) { return [c, c]; }))) + ' ' +
+    sel('owner', dkOwner, [['all', 'All items'], ['unassigned', 'Unassigned only'], ['overdue', 'Overdue only']]) +
+    ' <input type="search" class="flt-q" placeholder="Search deadlines, matters, clients…" oninput="dkSet(\'search\',this.value)" value="' + esc(dkSearch) + '" style="min-width:220px">';
+
+  var secHead = function (t, n) {
+    return '<div class="sec-head"><h2>' + t + '</h2><span class="rule"></span>' + (n ? '<span class="note">' + n + '</span>' : '') + '</div>';
+  };
+
+  document.getElementById('root').innerHTML =
+    wallNotice() +
+    hero('Docket &amp; deadlines — ' + M.asOfLabel,
+      fmtN(unassigned.length) + ' deadlines inside 30 days with <em>nobody</em> against them.',
+      'Dates are computed from the governing rule and the triggering event rather than typed into a calendar. ' +
+      overdue.length + ' are already past their computed date and ' + wk.length + ' fall inside the next seven days.',
+      ['docket', 'e3e', 'graph']) +
+    '<div class="demo-kpis k4">' + kpis.join('') + '</div>' +
+
+    (unassigned.length ? '<div class="wall-note"><span>⚠</span><div><b>' + fmtN(unassigned.length) +
+      ' deadlines inside 30 days have no responsible attorney.</b> A missed docket deadline is the most common source of ' +
+      'malpractice exposure at a litigation practice, and it almost always starts as a row exactly like these.</div></div>' : '') +
+
+    secHead('The queue', fmtN(rows.length) + ' shown') +
+    panel('Deadlines', controls, tbl, ' style="margin-bottom:18px"') +
+
+    secHead('By court and forum', courts.length + ' active') +
+    panel('Venue', srcChip('docket'), venue);
+}
+
+if (isSignedIn()) render();
+</script>
+</body>
+</html>

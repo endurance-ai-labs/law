@@ -34,9 +34,14 @@ Public landing at **`/welcome/`**. Signed-out visitors hitting `/` are redirecte
 | 6 | `/people/` | ✅ |
 | 7 | `/integrations/` connector map | ✅ |
 | 8 | `/brain/` cross-system Q&A | ✅ |
-| 3–8 | Remaining 17 pages | pending — see `build-spec/OUTLINE.md` §6 |
+| 3 | `/matter/` workspace (8 tabs) | ✅ |
+| 4 | `/ocg/` | ✅ |
+| 5 | `/litigation/` | ✅ |
+| 6 | `/capacity/` + `/origination/` | ✅ |
+| 7 | `/collections/` | ✅ |
+| 3–8 | Remaining 11 pages | pending — see `build-spec/OUTLINE.md` §6 |
 
-**Live pages (19):** `/` · `/welcome/` · `/revenue/` · `/clients/` · `/matters/` · `/afa/` · `/financials/` · `/lockup/` · `/rates/` · `/budget/` · `/billing/` · `/profitability/`
+**Live pages (25):** `/` · `/welcome/` · `/revenue/` · `/clients/` · `/matters/` · `/afa/` · `/financials/` · `/lockup/` · `/rates/` · `/budget/` · `/billing/` · `/profitability/`
 
 Every other nav route resolves to `404.html`, which names the module, what it will hold and which phase it lands in — nothing dead-ends.
 
@@ -122,7 +127,7 @@ Ten personas in `util.js`. Gating is at the data layer, not the view:
 ## Gotchas already paid for
 
 - **TDZ:** page filter state must be `var`, declared before the first `render()`. `data.js` constants read by the matter generator (`TARGET`, `OVERHEAD_K`) are declared above it for the same reason.
-- **Cache:** editing any `css/*.css` requires bumping `?v=` in `theme.css` **and** in every page's `<link>` tags.
+- **Cache:** editing any `css/*.css` **or `js/*.js`** requires bumping `?v=` in every page's `<link>` and `<script>` tags. A JS edit without the bump silently serves the old file — that is how a missing `addDays()` survived a full verification pass.
 - **Globals:** classic scripts share scope — page-level names must not collide with `data.js` / `util.js` / `nav.js`.
 - **Paths** are root-relative (`/css/…`). Deploying under a path prefix (`/law/`) needs a find-replace — Phase 9.
 - Hidden browser pane pauses CSS animations; motion checks read 0 px/s falsely.
